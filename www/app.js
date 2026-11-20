@@ -1970,10 +1970,51 @@ function suggestWeight(exKey, ex) {
 
 function toast(msg) {
   const el = document.getElementById('toast');
+  placeToast(el);
   el.textContent = msg;
   el.classList.remove('hidden');
   clearTimeout(ui.toastHandle);
   ui.toastHandle = setTimeout(() => el.classList.add('hidden'), 1900);
+}
+/* 键盘弹起时 fixed 元素仍贴在布局视口底部，会被键盘整个盖住（撤销按钮点不到）。
+   用 visualViewport 算出键盘高度，把提示条顶到键盘上方。 */
+function placeToast(el) {
+  if (!el) return;
+  const vv = window.visualViewport;
+  if (!vv) { el.style.bottom = ''; return; }
+  const kb = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
+  el.style.bottom = kb > 100 ? (kb + 16) + 'px' : '';
+}
+if (window.visualViewport && window.visualViewport.addEventListener) {
+  window.visualViewport.addEventListener('resize', function () {
+    const el = document.getElementById('toast');
+    if (el && !el.classList.contains('hidden')) placeToast(el);
+  });
+}
+/* 可撤销提示：文案 + 一个「撤销」按钮。自动保存没有二次确认的机会，
+   所以删除/清空这类动作必须留一条 6 秒的后悔通道。 */
+function toastAction(msg, label, cb, ms) {
+  const el = document.getElementById('toast');
+  if (!el) { toast(msg); return; }
+  placeToast(el);
+  el.innerHTML = '<span class="toast-msg">' + esc(msg) + '</span>' +
+    '<button type="button" class="toast-btn">' + esc(label || '撤销') + '</button>';
+  el.classList.remove('hidden');
+  clearTimeout(ui.toastHandle);
+  const hide = function () {
+    clearTimeout(ui.toastHandle);
+    el.classList.add('hidden');
+    el.innerHTML = '';
+  };
+  const btn = el.querySelector('.toast-btn');
+  if (btn) {
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      hide();
+      try { cb(); } catch (e) { toast('撤销失败：' + e.message); }
+    });
+  }
+  ui.toastHandle = setTimeout(hide, ms || 6000);
 }
 function syncTabs() {
   const moreActive = isMoreTab(ui.tab);
@@ -3529,11 +3570,63 @@ function planMove(key, dir) {
   p.ex = others.concat(arr);
   syncPlan(); save(); render();
 }
+/* 计划编辑的撤销：删除动作 / 清空字段共用一条时间线，6 秒内有效。
+   删除是「自动保存 + 立即生效」，若不给后悔通道，误触就等于永久丢内容。 */
+function planUndoSnapshot(kind, payload) {
+  ui.planUndo = { kind: kind, at: Date.now(), payload: payload };
+}
+function planUndo() {
+  const u = ui.planUndo;
+  if (!u) { toast('没有可撤销的操作'); return; }
+  if (Date.now() - u.at > 6000) { ui.planUndo = null; toast('撤销已过期（只保留 6 秒）'); return; }
+  if (u.kind === 'del') {
+    const d = u.payload;
+    if (!state.plans) state.plans = {};
+    state.plans[d.mode] = d.plan;
+    state.notes = d.notes;
+    state.slotModes = d.slotModes;
+    state.supersets = d.supersets;
+    state.overrides = d.overrides;
+    syncPlan(); save(); render();
+    ui.planUndo = null;
+    toast('已恢复，动作和它的提示都回来了');
+    return;
+  }
+  if (u.kind === 'field') {
+    const d = u.payload;
+    const ex = findEx(d.key);
+    if (!ex) { ui.planUndo = null; toast('动作已不在计划里，无法撤销'); return; }
+    ex[d.f] = d.old;
+    if (d.f === 'sets' || d.f === 'repMin' || d.f === 'repMax') {
+      ex.target = clampInt(ex.sets, 1, 12, 3) + '×' + clampInt(ex.repMin, 1, 99, 8) + '—' + clampInt(ex.repMax, 1, 99, 12);
+    }
+    syncPlan(); save();
+    const el = document.querySelector('[data-ef="' + d.f + '"][data-ek="' + d.key + '"]');
+    if (el) el.value = d.old;
+    ui.planUndo = null;
+    toast('已恢复');
+  }
+}
+function planFieldLabel(f) {
+  return ({ name: '动作名称', cue: '动作要点', kind: '类型', rir: 'RIR' })[f] || '该字段';
+}
 function planDeleteEx(key) {
-  const p = ensurePlan(state.settings.mode || 'ppl');
+  const mode = state.settings.mode || 'ppl';
+  const p = ensurePlan(mode);
+  const victim = p.ex.find(e => e.key === key);
+  planUndoSnapshot('del', {
+    mode: mode, plan: clone(p),
+    notes: clone(state.notes || {}),
+    slotModes: clone(state.slotModes || {}),
+    supersets: clone(state.supersets || {}),
+    overrides: clone(state.overrides || {}),
+  });
   p.ex = p.ex.filter(e => e.key !== key);
   purgeExKey(key);
-  syncPlan(); save(); render(); toast('已删除该动作');
+  syncPlan(); save(); render();
+  const left = victim ? p.ex.filter(e => e.day === victim.day).length : 1;
+  const label = victim ? '「' + victim.name + '」' : '该动作';
+  toastAction(left === 0 ? label + '已删除，这一天没有动作了' : '已删除' + label, '撤销', planUndo);
 }
 function planReset() {
   const mode = state.settings.mode || 'ppl';
@@ -5826,7 +5919,14 @@ document.addEventListener('input', function (e) {
     const p = ensurePlan(mode);
     const ex = p.ex.find(e => e.key === key);
     if (!ex) return;
+    const prev = ex[f];
     let v = el.value;
+    /* 名称是识别动作的唯一入口：删空不落盘，否则列表里会留一条没名字的空动作 */
+    if (f === 'name' && !String(v).trim()) {
+      el.value = prev || '';
+      toast('动作名称不能为空，已保留原名');
+      return;
+    }
     if (f === 'sets' || f === 'repMin' || f === 'repMax') v = clampInt(v, 1, f === 'sets' ? 12 : 99, ex[f]);
     else if (f === 'restSec') v = clampInt(v, 30, 600, ex.restSec);
     ex[f] = v;
@@ -5835,6 +5935,11 @@ document.addEventListener('input', function (e) {
     }
     delete state.overrides[key]; // 计划编辑为准，清掉一次性 override
     syncPlan(); save();
+    /* 把一段非空文字删空 = 删掉了内容，给 6 秒撤销，避免手滑后无法回退 */
+    if (typeof prev === 'string' && prev && !String(v).trim()) {
+      planUndoSnapshot('field', { key: key, f: f, old: prev });
+      toastAction('已清空' + planFieldLabel(f), '撤销', planUndo);
+    }
     return;
   }
   /* ---- 编辑我的计划：当天字段（类型 / 名称 / 目标） ---- */
@@ -5872,6 +5977,18 @@ document.addEventListener('change', function (e) {
     saveUI(); renderReportModal();
     return;
   }
+});
+
+/* 计划编辑：数字框删空时不会落盘（按旧值兜底），但 DOM 会一直空着，
+   看起来像「内容没了」。失焦时把真实值回填，界面与数据保持一致。 */
+document.addEventListener('focusout', function (e) {
+  const el = e.target;
+  if (!el || !el.dataset || !el.dataset.ef) return;
+  const f = el.dataset.ef;
+  if (f !== 'sets' && f !== 'repMin' && f !== 'repMax' && f !== 'restSec') return;
+  if (String(el.value).trim() !== '') return;
+  const ex = findEx(el.dataset.ek);
+  if (ex && ex[f] !== undefined && ex[f] !== null) el.value = ex[f];
 });
 
 document.getElementById('importFile').addEventListener('change', function (e) {
