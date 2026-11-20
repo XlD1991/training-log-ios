@@ -556,9 +556,9 @@ select.exf{appearance:auto;padding:8px 10px}
 .pe-top{display:flex;align-items:center;gap:8px}
 .pe-idx{width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 .pe-name{flex:1;height:34px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font-size:13px;color:var(--text);outline:none;background:#fff}
-.pe-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
-.pe-grid label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--muted)}
-.pe-grid input{height:34px;border:1px solid var(--line);border-radius:8px;text-align:center;font-size:14px;color:var(--text);outline:none;background:#fff}
+.pe-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 0}
+.pe-grid label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--muted);min-width:0}
+.pe-grid input{width:100%;min-width:0;box-sizing:border-box;height:34px;border:1px solid var(--line);border-radius:8px;text-align:center;font-size:14px;color:var(--text);outline:none;background:#fff}
 .pe-grid input:focus,.pe-name:focus,.pd-name:focus,.pd-goal:focus,.pd-short:focus{border-color:var(--primary)}
 .pe-cue{display:block;width:100%;height:30px;border:1px solid var(--line);border-radius:7px;padding:0 8px;font-size:12px;color:var(--text);outline:none;background:#FAFBFD}
 .pe-ops{display:flex;gap:6px;justify-content:flex-end;margin-top:6px}
@@ -570,7 +570,7 @@ select.exf{appearance:auto;padding:8px 10px}
 .plan-custom .swap-gh{font-size:13px;color:var(--text);font-weight:600;margin-bottom:8px}
 .plan-custom .exf{width:100%;height:38px;border:1px solid var(--line);border-radius:9px;padding:0 10px;font-size:14px;color:var(--text);outline:none;margin-bottom:8px}
 .plan-gitem{min-height:auto;padding:8px 10px}
-@media (max-width:380px){.pe-grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:380px){.pe-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* ===== 云同步卡片 ===== */
 .cloud-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:6px 0 14px}
