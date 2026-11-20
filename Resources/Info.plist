@@ -5,7 +5,7 @@
   <key>CFBundleDevelopmentRegion</key>
   <string>zh_CN</string>
   <key>CFBundleDisplayName</key>
-  <string>某天的训练日志</string>
+  <string>训练日记</string>
   <key>CFBundleExecutable</key>
   <string>TrainingLog</string>
   <key>CFBundleIdentifier</key>
