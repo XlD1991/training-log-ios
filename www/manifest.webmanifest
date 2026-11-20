@@ -1,0 +1,14 @@
+{
+  "name": "训练日记",
+  "short_name": "训练日记",
+  "description": "力量训练与有氧记录 · 周计划 · 器械库 · 佳明导出",
+  "start_url": "./?sharecode=P4MYIH6XDQ",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F6FA",
+  "theme_color": "#3B6FE0",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
