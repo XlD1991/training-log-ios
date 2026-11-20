@@ -19,6 +19,8 @@ Resources/Icon-*.png              图标（1024 / 120 / 180，RGB 无透明）
 www/                              网页版 v34 原样拷贝，未改一行
 build.sh                          在 macOS 上编译并组装 IPA
 repack.py                         在 Windows 上只换 www 重打包（免 Mac）
+rebrand.py                        给已有 IPA 换显示名与图标（免 Mac、免编译）
+make_icon.py                      生成白底蓝哑铃图标（A-E 五种变体）
 backup_tool.py                    备份 JSON <-> storage.json 转换
 .github/workflows/build-ipa.yml   GitHub Actions 云端构建
 ```
@@ -66,7 +68,7 @@ App 把所有 localStorage 键值存在 `Documents/storage.json`：
 - 导出成通用备份：`python backup_tool.py export storage.json 备份.json`
 - 查看内容：`python backup_tool.py show storage.json`
 
-在 iPhone 上打开「文件」App → 我的 iPhone → **某天的训练日志** 即可看到 `storage.json`。
+在 iPhone 上打开「文件」App → 我的 iPhone → **训练日记** 即可看到 `storage.json`。
 
 导入前先上划关闭 App，放好文件再重开（App 启动时读取一次到内存，运行中会覆盖文件）。
 
@@ -75,9 +77,9 @@ App 把所有 localStorage 键值存在 `Documents/storage.json`：
 | 想改什么 | 改哪里 | 是否要重新编译 |
 |---|---|---|
 | 页面 / 样式 / 训练逻辑 | `www/` | 否，`repack.py` 即可 |
-| App 显示名 | `Resources/Info.plist` → `CFBundleDisplayName` | 是 |
-| Bundle ID | `Resources/Info.plist` → `CFBundleIdentifier` | 是 |
-| 图标 | `Resources/Icon-*.png` | 是 |
+| App 显示名 | `Resources/Info.plist` → `CFBundleDisplayName` | 给已有 IPA 换用 `rebrand.py`，免编译 |
+| Bundle ID | `Resources/Info.plist` → `CFBundleIdentifier` | 是（改了等于新 App，数据不互通） |
+| 图标 | 改 `make_icon.py` 后重新生成 `Resources/Icon-*.png` | 给已有 IPA 换用 `rebrand.py`，免编译 |
 | 最低系统版本 | `Info.plist` 的 `MinimumOSVersion` 与 `build.sh` 的 `-mios-version-min` | 是 |
 
 当前 `MinimumOSVersion = 15.0`，编译参数同为 15.0，覆盖 TrollStore 2 支持的 iOS 15.5–17.0；目标设备 iOS 16.1.1 无需改动。
