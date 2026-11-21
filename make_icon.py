@@ -19,7 +19,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, "Resources")
 PREVIEW = os.path.join(ROOT, "build", "icon-preview")
 
-VARIANT = "E"
+VARIANT = "J"
 
 BLUE = (26, 92, 208)
 BLUE_DARK = (20, 74, 176)
@@ -62,6 +62,14 @@ def make(size, variant):
         rr(300, 450, 724, 574, 62, BLUE)          # grip
         rr(150, 306, 340, 718, 50, BLUE)          # left plate
         rr(684, 306, 874, 718, 50, BLUE)          # right plate
+    elif variant == "J":
+        # stair-step progress: 3 solid rising steps + bold arrow to next level
+        poly = lambda pts, fill: d.polygon([(x * u, y * u) for x, y in pts], fill=fill)
+        poly([(168, 812), (168, 692), (400, 692), (400, 552), (632, 552),
+              (632, 412), (856, 412), (856, 812)], BLUE)
+        # up arrow above the top step
+        poly([(744, 222), (828, 306), (782, 306), (782, 380),
+              (706, 380), (706, 306), (660, 306)], BLUE)
     elif variant == "D":
         # stepped weight plates, separated by white gaps
         rr(340, 448, 684, 576, 64, BLUE)          # center grip, tucked under plates
@@ -95,7 +103,9 @@ def main():
         path = os.path.join(OUT, name)
         make(size, VARIANT).save(path, "PNG")
         print("  %-18s %4d x %4d  RGB" % (name, size, size))
-    for variant, label in [("A", "A-disc"), ("B", "B-block"), ("C", "C-tilt")]:
+    for variant, label in [("A", "A-disc"), ("B", "B-block"), ("C", "C-tilt"),
+                           ("F", "F-step-inside"), ("G", "G-step-above"),
+                           ("I", "I-step-line"), ("J", "J-step-bold")]:
         path = os.path.join(PREVIEW, label + ".png")
         make(1024, variant).save(path, "PNG")
         print("  preview:", path)

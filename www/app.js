@@ -1,4 +1,4 @@
-/* 训练日记 · 周计划（本机保存版，无需登录、无需网络）
+/* 无限进步 · 周计划（本机保存版，无需登录、无需网络）
    动作库、执行规则与「器械适配版」一致；全量器械库来自 gear.json。
    每个动作可从器械库一键替换，也可手工编辑名称与参数，改动存于 state.overrides。
    用户新增的器械动作存于 state.customGear，随 JSON 备份带走。
@@ -7,6 +7,22 @@
    有氧器械库、默认安排、心率区设置与有氧规则来自 cardio.json，与 Excel 同源。
    力量与有氧可互相替换：state.slotModes 保存每个位置的类型覆盖；
    力量位改成有氧则改记时长 / 功率 / 心率 / 踏频，有氧位改成力量则改记重量 / 次数，历史记录不追溯改写。 */
+
+const DIET_MEALS = [
+  { key: 'breakfast', name: '早餐' },
+  { key: 'lunch', name: '午餐' },
+  { key: 'dinner', name: '晚餐' },
+  { key: 'snack', name: '加餐' },
+];
+const DIET_ACTIVITY = [
+  { v: 1.2, label: '久坐（几乎不活动）' },
+  { v: 1.375, label: '轻度活动（每周 1—3 次）' },
+  { v: 1.55, label: '中度活动（每周 3—5 次）' },
+  { v: 1.725, label: '高强度（每周 6—7 次）' },
+  { v: 1.9, label: '极高（体力活 / 双练）' },
+];
+const DIET_GOAL_DEFAULT = { sex: 'm', age: 30, height: 175, activity: 1.55, proteinPerKg: 1.8, fatPerKg: 0.9, rate: 0.25, targetWeight: 0 };
+
 
 /* GEAR_START · 由 gear.json 自动生成，勿手改 */
 const GEAR = [
@@ -196,12 +212,18 @@ const EX_PPL = [
   { day: 'mon', key: 'mon-2', name: '哑铃坐姿推举', kind: '自由重量', pattern: '垂直推', target: '3×8—12', sets: 3, repMin: 8, repMax: 12, rir: '1—2', restSec: 120, cue: '排在水平推之后，肩前束已预疲劳，重量按当日状态调整；肘不过度外展，肩胛稳定' },
   { day: 'mon', key: 'mon-4', name: '龙门架绳索夹胸', kind: '固定器械', pattern: '胸水平内收', target: '3×12—15', sets: 3, repMin: 12, repMax: 15, rir: '0—1', restSec: 75, cue: '离心2—3秒，底部拉长位不泄力；蝴蝶机可作周期替换' },
   { day: 'mon', key: 'mon-5', name: '哑铃侧平举', kind: '自由重量', pattern: '肩外展', target: '3×12—20', sets: 3, repMin: 12, repMax: 20, rir: '0—1', restSec: 75, cue: '小重量高次数，肘微屈，不耸肩；与周五合计 6 组/周补中束' },
+  /* 三头直接组：卧推/推胸/推举只能间接带到三头，长头在推类动作里几乎全程缩短，
+     拉长位收缩不足。补 2 组下压放在收尾，就是补这个缺口，不去抢主项容量。 */
+  { day: 'mon', key: 'mon-6', name: '龙门架绳索下压', kind: '龙门架', pattern: '肘伸', target: '2×10—15', sets: 2, repMin: 10, repMax: 15, rir: '0—1', restSec: 75, cue: '三头直接容量，收尾做；肘夹紧不晃、顶端不锁死，离心 2 秒；2 组/周，不追重量' },
 
   { day: 'tue', key: 'tue-1', name: '杠铃俯身划船', kind: '自由重量', pattern: '水平拉', target: '3×6—10', sets: 3, repMin: 6, repMax: 10, rir: '1—2', restSec: 180, cue: '躯干角度稳定，不靠惯性甩；挂片俯身划船/哑铃单臂划船可作周期替换' },
   { day: 'tue', key: 'tue-2', name: '反手下拉', kind: '固定器械', pattern: '垂直拉', target: '3×8—12', sets: 3, repMin: 8, repMax: 12, rir: '1—2', restSec: 120, cue: '清单无标准正手高位下拉；肩胛先下沉再屈肘，拉至锁骨附近；挂片剪刀拉背可作周期替换' },
   { day: 'tue', key: 'tue-3', name: '挂片鹰拉划船', kind: '固定器械', pattern: '水平拉', target: '3×10—15', sets: 3, repMin: 10, repMax: 15, rir: '1', restSec: 120, cue: '胸口贴挡板，先肩胛后收再拉，顶峰挤压1秒' },
   { day: 'tue', key: 'tue-4', name: '龙门架直臂下拉', kind: '固定器械', pattern: '垂直拉', target: '2×12—15', sets: 2, repMin: 12, repMax: 15, rir: '0—1', restSec: 75, cue: '肘微屈固定，感受背阔肌拉长和收缩' },
   { day: 'tue', key: 'tue-5', name: '龙门架面拉', kind: '龙门架', pattern: '肩水平外展', target: '3×15—20', sets: 3, repMin: 15, repMax: 20, rir: '0—1', restSec: 75, cue: '后束和肩袖，低疲劳收尾；与周五合计 6 组/周' },
+  /* 二头直接组：划船与反手下拉的屈肘负荷被背阔分担大半，二头始终不是主导。
+     补 2 组弯举放最后，位置在面拉之后，不影响背的容量与判断。 */
+  { day: 'tue', key: 'tue-6', name: '哑铃弯举', kind: '自由重量', pattern: '肘屈', target: '2×8—12', sets: 2, repMin: 8, repMax: 12, rir: '0—1', restSec: 75, cue: '二头直接容量，收尾做；肘贴身不前移，顶端挤压 1 秒；2 组/周，用能控住下放的重量' },
 
   { day: 'wed', key: 'wed-1', name: '杠铃深蹲', kind: '自由重量', pattern: '膝主导', target: '3×6—10', sets: 3, repMin: 6, repMax: 10, rir: '1—2', restSec: 180, cue: '深蹲架就位，主项记录重量做双进阶；深度可控，膝与脚尖方向一致；史密斯深蹲可作周期替换' },
   { day: 'wed', key: 'wed-2', name: '哈克深蹲', kind: '固定器械', pattern: '膝主导', target: '3×8—12', sets: 3, repMin: 8, repMax: 12, rir: '1', restSec: 120, cue: '承接深蹲，累积下肢整体张力；坐姿推腿机可作周期替换' },
@@ -213,12 +235,15 @@ const EX_PPL = [
   { day: 'fri', key: 'fri-2', name: '挂片坐姿划船', kind: '固定器械', pattern: '水平拉', target: '3×8—12', sets: 3, repMin: 8, repMax: 12, rir: '1—2', restSec: 120, cue: '补水平拉容量；挂片俯身划船可作周期替换' },
   { day: 'fri', key: 'fri-3', name: '哑铃侧平举', kind: '自由重量', pattern: '肩外展', target: '3×12—20', sets: 3, repMin: 12, repMax: 20, rir: '0—1', restSec: 75, cue: '小重量高次数，肘微屈，不耸肩' },
   { day: 'fri', key: 'fri-4', name: '蝴蝶机反向飞鸟', kind: '固定器械', pattern: '肩水平外展', target: '3×15—20', sets: 3, repMin: 15, repMax: 20, rir: '0—1', restSec: 75, cue: '后束和肩袖，低疲劳收尾；与周二龙门架面拉错开刺激' },
+  /* 核心放周五：这天容量最轻（12 组）、无大重量下肢，2 组卷腹不干扰任何主项。
+     放周六下肢日会和深蹲/倒蹬的腹压恢复叠加，也最容易被练完腿直接跳过。 */
+  { day: 'fri', key: 'fri-5', name: '坐姿卷腹', kind: '固定器械', pattern: '躯干屈', target: '2×12—20', sets: 2, repMin: 12, repMax: 20, rir: '0—1', restSec: 75, cue: '躯干屈曲训练，给深蹲/硬拉打腹压基础；用腹肌卷、不用手臂拉，吐气到底；2 组收尾' },
 
   { day: 'sat', key: 'sat-1', name: '倒蹬', kind: '固定器械', pattern: '膝主导', target: '4×10—15', sets: 4, repMin: 10, repMax: 15, rir: '1', restSec: 150, cue: '脚位中上偏宽偏臀或中窄偏股四；蹬起不锁膝；坐姿推腿机可作周期替换' },
   { day: 'sat', key: 'sat-2', name: '史密斯臀推', kind: '史密斯', pattern: '髋伸', target: '3×8—12', sets: 3, repMin: 8, repMax: 12, rir: '1—2', restSec: 120, cue: '史密斯架 + 哑铃凳，髋伸主导补后链；顶峰停 1 秒；亦可用平板卧推架起杠' },
   { day: 'sat', key: 'sat-5', name: '史密斯罗马尼亚硬拉', kind: '史密斯', pattern: '髋铰链', target: '3×8—12', sets: 3, repMin: 8, repMax: 12, rir: '1—2', restSec: 120, cue: '史密斯架固定轨迹，髋铰链补后链；与周三 RDL 固定器械换不同器械刺激、动作模式一致；腘绳拉长位控制' },
   { day: 'sat', key: 'sat-3', name: '腿弯举', kind: '固定器械', pattern: '膝屈', target: '3×12—15', sets: 3, repMin: 12, repMax: 15, rir: '0—1', restSec: 75, cue: '可与周三换脚位或节奏' },
-  { day: 'sat', key: 'sat-4', name: '史密斯站姿提踵', kind: '史密斯', pattern: '踝伸', target: '3×12—20', sets: 3, repMin: 12, repMax: 20, rir: '0—1', restSec: 75, cue: '前脚掌垫杠铃片，底部拉伸位停顿 1 秒；无专用提踵机也能完成' },
+  { day: 'sat', key: 'sat-4', name: '史密斯站姿提踵', kind: '史密斯', pattern: '踝伸', target: '5×12—20', sets: 5, repMin: 12, repMax: 20, rir: '0—1', restSec: 75, cue: '前脚掌垫杠铃片，底部拉伸位停顿 1 秒；小腿 3 组只能维持，5 组才推动增长；宁轻不甩' },
 ];
 
 /* ================= 分化模式：PPL（推/拉/腿/上/下）与 5 分化（胸/背/肩/手臂/腿） =================
@@ -231,7 +256,7 @@ const DAYS_FIVE = [
   { key: 'back', label: '周二', short: '背', name: '背日 Back', goal: '背阔 + 背中部 + 后束收尾，垂直拉与水平拉并重', rest: false },
   { key: 'shoulder', label: '周三', short: '肩', name: '肩日 Shoulder', goal: '前束 / 中束 / 后束全覆盖，推举打底', rest: false },
   { key: 'thu', label: '周四', short: '休', name: '恢复日 · 有氧', goal: '不安排力量训练 · 可选中低强度有氧 30 分钟（Zone 2），可步行/拉伸', rest: true },
-  { key: 'arms', label: '周五', short: '臂', name: '手臂日 Arms', goal: '肱二头 + 肱三头，弯举与下压打底', rest: false },
+  { key: 'arms', label: '周五', short: '臂', name: '手臂 + 核心日 Arms & Core', goal: '肱二头 + 肱三头弯举下压打底；核心放这天（无大重量下肢，2 组卷腹不干扰主项）', rest: false },
   { key: 'legs', label: '周六', short: '腿', name: '腿日 Legs', goal: '股四主导，杠铃深蹲打底，后链同练', rest: false },
   { key: 'sun', label: '周日', short: '休', name: '恢复日 · 有氧', goal: '不安排力量训练 · 可选中低强度有氧 30 分钟（Zone 2），保证睡眠', rest: true },
 ];
@@ -264,6 +289,9 @@ const EX_FIVE = [
   { day: 'arms', key: 'arms-3', name: '龙门架绳索弯举', kind: '龙门架', pattern: '肘屈', target: '3×10—15', sets: 3, repMin: 10, repMax: 15, rir: '0—1', restSec: 75, cue: '二头补容量，恒定张力，适合高次数' },
   { day: 'arms', key: 'arms-4', name: '哑铃臂屈伸', kind: '自由重量', pattern: '肘伸', target: '3×10—15', sets: 3, repMin: 10, repMax: 15, rir: '0—1', restSec: 75, cue: '三头补容量，过顶或俯身均可，肘固定不晃' },
   { day: 'arms', key: 'arms-5', name: '抬高位坐姿二头弯举', kind: '固定器械', pattern: '肘屈', target: '3×12—15', sets: 3, repMin: 12, repMax: 15, rir: '0—1', restSec: 75, cue: '上臂抬高固定，长头受力更大，只作二头补项' },
+  /* 五分化补核心：原模板整周没有一个躯干屈动作。放周五手臂日（无大重量下肢），
+     2 组卷腹不抢主项恢复；与 PPL 的核心放周五同一逻辑。 */
+  { day: 'arms', key: 'arms-6', name: '坐姿卷腹', kind: '固定器械', pattern: '躯干屈', target: '2×12—20', sets: 2, repMin: 12, repMax: 20, rir: '0—1', restSec: 75, cue: '五分化唯一核心直接组，周五收尾；用腹肌卷、不用手臂拉，吐气到底；给深蹲/硬拉打腹压基础' },
 
   /* 腿 — 周六：股四主导，后链同练 */
   { day: 'legs', key: 'legs-1', name: '杠铃深蹲', kind: '自由重量', pattern: '膝主导', target: '3×6—10', sets: 3, repMin: 6, repMax: 10, rir: '1—2', restSec: 180, cue: '深蹲架就位，主项记录重量做双进阶；史密斯深蹲/安全深蹲杠可作周期替换' },
@@ -319,7 +347,13 @@ function purgeExKey(key) {
   if (state.overrides) delete state.overrides[key];
   if (state.notes) delete state.notes[key];
   if (state.slotModes) delete state.slotModes[key];
-  if (state.supersets) { Object.keys(state.supersets).forEach(k => { if (k === key || k.split('|').indexOf(key) >= 0) delete state.supersets[k]; }); }
+  if (state.supersets) {
+    /* 配对是双向的：删掉 key 本身之外，还要删掉「value 指向 key」的反向条目，
+       否则搭档卡片会一直显示「交替：?」，做完那组还会去提示一个不存在的动作。 */
+    Object.keys(state.supersets).forEach(k => {
+      if (k === key || state.supersets[k] === key || k.split('|').indexOf(key) >= 0) delete state.supersets[k];
+    });
+  }
 }
 /* 改动计划后，把全局 DAYS/EX 重新指向自定义计划（今日 / 历史 / 顺延都读这两个全局） */
 function syncPlan() {
@@ -330,9 +364,9 @@ function syncPlan() {
 }
 
 const RULES = [
-  ['渐进负荷', '双进阶看第一组（最重组）：第一组能干净做到次数上限、且还有 1—2 次余力（RIR 1—2），下次就加 2.5%—5% 重量，次数回落下限继续加次数；后面组因疲劳掉次数属正常，不影响判断'],
+  ['渐进负荷', '双进阶看第一组（最重组）：第一组能干净做到次数上限、且还有 1—2 次余力（RIR 1—2），下次就加重，次数回落下限继续加次数；后面组因疲劳掉次数属正常，不影响判断。加多少由本健身房器械决定：杠铃最小片 2.5 kg/片，所以总重只能按 5 kg 一档走（每边各加一片 2.5）；哑铃单只从 5 kg 起、每档 2.5 kg，只能换到下一档；片垛器械插销一档 2.5 kg。低于次数下限时反向降一档，不硬顶。'],
   ['RIR', '大肌群复合动作RIR 1—2；器械孤立动作最后一组可到RIR 0—1，不必每组力竭'],
-  ['单次容量', '大肌群每次约12—16组有效组；小肌群约10—14组；全周每肌群约10—14组'],
+  ['单次容量', '大肌群每次约12—16组有效组；小肌群（中束 / 后束 / 手臂 / 小腿 / 腹）按直接组另算，每周 2—5 组即有效，不必凑到 10 组；全周每肌群 10—14 组是上限参考，不是最低要求'],
   ['动作顺序', '自由重量/复合动作在前，固定器械/孤立动作在后；弱项可放当天第一个'],
   ['离心控制', '2—3秒离心，底部拉长位不放松，不甩不弹'],
   ['组间休息', '自由重量复合主项 2—3 分钟；一般复合/固定器械 90—120 秒；孤立动作 60—90 秒。休息不足会压低下一组次数，让双进阶判断失真'],
@@ -341,10 +375,16 @@ const RULES = [
   ['器械富余取舍', '同类器械只选一台跑满 4—6 周；坐姿推腿、腿屈伸、腿内收外展一体机、4 台推肩、蝴蝶机 2 台、史密斯等均属轮换池，不因器械多就堆组数，每肌群仍守 10—14 组/周'],
   ['一键替换', '【新增】点卡片右上角 ⇄ 从器械库一键换动作：优先选同动作模式（水平推 / 垂直拉 / 膝主导 / 髋铰链 …），才不会改变该位置承担的肌群与容量。替换只改动作名、类型标签和建议组间休息，组数 × 次数、RIR、顺序一律不动'],
   ['肩部平衡', '推类复合动作已给前束大量间接容量，中束/后束每周各补约 6 组直接组（侧平举、面拉/反向飞鸟），对冲圆肩倾向'],
-  ['手臂', '不单独练；推日/拉日复合动作和周五推胸、划船已覆盖肱三头/肱二头。若以手臂围度为优先目标，每周可另加 2—4 组弯举与臂屈伸，放在收尾'],
-  ['减量周', '每4—6周安排1周：组数减30%—40%，重量保持或略降'],
+  ['手臂', '推 / 拉日的卧推、推胸、划船、下拉能维持二头三头，但屈肘与伸肘的负荷大部分被胸背分担，只靠复合动作不足以继续增围度。模板已在周一收尾加 2 组绳索下压、周二收尾加 2 组哑铃弯举。若以手臂为优先目标：把周五的侧平举减 1 组，换成 2 组弯举或臂屈伸，手臂直接组控制在 4—6 组/周，再多会拖累当天主项'],
+  ['容量周期化', '按 4 周一个周期自动推进：第 1 周基础组数，第 2 / 3 周给当天前 1—2 个复合动作各 +1 组（周容量 80 → 85 → 90），第 4 周自动减到 ×0.7。加量只加复合动作——孤立动作加组的边际贡献小，却同样占恢复预算。周期位置按「连续练了几周」自动算，停练两周会回到第 1 周重新累积，不需要手动开周期'],
+  ['减量周', '第 4 周自动减量（组数 ×0.7、重量维持）。也可以手动提前：主项连续 2 周没刷新 e1RM 就减，别硬顶到第 4 周；反之第 3 周还在创 PR，可以顺延一周把这一波吃完'],
   ['神经疲劳信号', '肌肉不酸但动作明显变沉、速度慢、注意力散：当天减1—2组或降5%重量'],
   ['蛋白摄入', '1.2—1.6 g/kg 体重为参考区间，能到更好、达不到不必硬追（1.6 左右是增肌收益的常见上限，超过不必刻意加）；分 3—5 餐。长期低于约 1.2 g/kg 增肌会受限，这不是计划容量能弥补的；蛋白不足时优先保证每组质量，不额外堆容量，每肌群 10—14 组即可'],
+  ['超级组怎么配', '首选对抗肌配对：推 ↔ 拉、膝伸 ↔ 膝屈、二头 ↔ 三头；次选互不抢力的不同肌群（中束 ↔ 后束、背阔 ↔ 后束、臀伸 ↔ 膝屈）。两个大复合（深蹲 + 硬拉、卧推 + 划船）不配，两个练同一肌群的动作也不配——第二组次数和总容量都会掉。别配的两个动作尽量在同一片器械区，走到对面那台机器的时间也算休息。'],
+  ['什么时候做超级组', '当天第 1—2 个动作（自由重量大复合、要做双进阶判断）保持正常做组，组间 2—3 分钟；到第 3 个动作以后的中后段固定器械 / 龙门架 / 孤立动作再配超级组：A 一组 → 30—45 秒内走到 B → B 一组 → 成对做完休息 60—120 秒。计划页每天都有「⭐ 一键套用科学配对」，已按这个顺序排好。'],
+  ['超级组的实证与边界', '对抗肌超级组在同等训练量下可省 30%—50% 时间，力量与肌肥大效果与传统长休息相当（部分研究总容量更高，因为训练密度上去了）；同肌群超级组会压低后续组次数，只适合低负荷泵感收尾。减量周保留配对但组数照减 30%—40%；睡眠不足或当天状态差时，先把超级组拆回正常做组，休息优先。'],
+  ['组内掉次数', '看第一组到最后一组的次数掉幅：25% 以内属正常疲劳；到 35% 以上先查组间休息（主项 2—3 分钟）有没有被压缩，休息补足后仍掉就说明负荷偏高，下次降一档（杠铃 5 kg、哑铃 2.5 kg）。掉幅比总容量更能解释「该不该加重」——第一组顶格但后面组崩，加重的意义不大。'],
+  ['平台期怎么判', '平台期按「估算 1RM」判断，不看重量本身：60 kg 从 6 次做到 10 次，重量没变但 e1RM 从 72 涨到 80 kg，是进步不是停滞。连续 4 次训练 e1RM 都没提高才算平台，先查睡眠与热量，再考虑换同类动作或加容量，最后才是减载重置。'],
   /* CARDIO_RULES_START · 由 cardio.json 自动生成，勿手改 */
   ["有氧强度","休息日只做中低强度稳态有氧（Zone 2）：目标心率约为最大心率的 60%—70%，能完整说句子、不喘到说不出话。最大心率默认按 220 − 年龄估算，可在手机「有氧」页改成实测值；填了 FTP 还会显示 Zone 2 功率区间。心率或功率连续偏高就降功率轻踏，而不是硬扛"],
   ["有氧时长与进阶","每次 20—40 分钟，从 20—30 分钟起步；每周总时长增幅不超过 10%—15%，先加时长、再加功率。有氧不做双进阶，也不追求每次突破；记录时长、平均功率、心率、踏频与 RPE 就足够判断进展，室内稳态不记距离"],
@@ -586,23 +626,69 @@ function toggleType(weekdayKey, type) {
   save(); render();
 }
 
-/* 训练顺序修订号：v1 = 周一第 2/3 位互换（胸的两个水平推连做，肩推后移）。
-   key 与动作的绑定永久不变，只调整数组顺序，历史记录 / 上次重量 / 备注才不会错位。
+/* 训练顺序修订号：
+   v1 = 周一第 2/3 位互换（胸的两个水平推连做，肩推后移）；
+   v2 = 模板补齐三头 / 二头 / 核心三个直接组动作（mon-6 绳索下压、tue-6 哑铃弯举、
+        fri-5 坐姿卷腹），并把提踵从 3 组加到 5 组。补的是复合动作带不到的那部分容量。
+   key 与动作的绑定永久不变，只调整数组顺序 / 增补位置，历史记录 / 上次重量 / 备注才不会错位。
    已保存过 plans 的老数据靠一次性迁移升级；迁移后打标记，用户之后再手动调顺序不会被反复覆盖。 */
-const PLAN_ORDER_REV = 1;
-function migratePlanOrder(plans, rev) {
+const PLAN_ORDER_REV = 3;
+/* v1 时代的 24 个动作位。只有「一个不少、一个不多、且没被替换过」才认定仍是纯模板，
+   可以整体换成新模板；用户删过、加过、换过动作就一律不动他的计划，尊重自定义。 */
+const LEGACY_PPL_KEYS = ['mon-1', 'mon-2', 'mon-3', 'mon-4', 'mon-5', 'tue-1', 'tue-2', 'tue-3', 'tue-4', 'tue-5', 'wed-1', 'wed-2', 'wed-3', 'wed-4', 'wed-5', 'fri-1', 'fri-2', 'fri-3', 'fri-4', 'sat-1', 'sat-2', 'sat-3', 'sat-4', 'sat-5'];
+function isUntouchedPplPlan(exs, overrides, slotModes) {
+  if (!Array.isArray(exs) || exs.length !== LEGACY_PPL_KEYS.length) return false;
+  const have = exs.map(function (e) { return e.key; }).sort().join(',');
+  if (have !== LEGACY_PPL_KEYS.slice().sort().join(',')) return false;
+  for (let i = 0; i < exs.length; i++) {
+    const k = exs[i].key;
+    if (overrides && overrides[k]) return false;
+    if (slotModes && slotModes[k]) return false;
+  }
+  return true;
+}
+/* v3：缺项补齐。v2 只在「纯模板」时整体替换，用户只要一键替换过任何一个动作就永远不会
+   拿到三头 / 二头 / 核心与五分化的核心。v3 改成逐项检查：缺哪个补哪个，只追加没有的 key，
+   不覆盖用户已有动作、不碰 overrides / 历史记录（历史按 exKey 存，新 key 与旧数据无冲突）。 */
+function ensureMinorAdditions(planObj, templateEx, keys) {
+  if (!planObj || !Array.isArray(planObj.ex)) return planObj;
+  const have = {};
+  planObj.ex.forEach(function (e) { if (e && e.key) have[e.key] = 1; });
+  const add = [];
+  keys.forEach(function (k) {
+    if (have[k]) return;
+    const tpl = templateEx.find(function (e) { return e.key === k; });
+    if (tpl) add.push(clone(tpl));
+  });
+  return add.length ? Object.assign({}, planObj, { ex: planObj.ex.concat(add) }) : planObj;
+}
+function migratePlanOrder(plans, rev, overrides, slotModes) {
   const src = (plans && typeof plans === 'object') ? plans : {};
   const out = {};
   Object.keys(src).forEach(function (m) { out[m] = src[m]; });
-  if (rev >= PLAN_ORDER_REV || !out.ppl || !Array.isArray(out.ppl.ex)) return out;
-  const arr = out.ppl.ex.slice();
-  const iPush = arr.findIndex(function (e) { return e.key === 'mon-2' && e.name === '哑铃坐姿推举'; });
-  const iChest = arr.findIndex(function (e) { return e.key === 'mon-3' && e.name === '坐姿推胸'; });
-  /* 用户已用一键替换改过动作名时不迁移，尊重其自定义 */
-  if (iPush >= 0 && iChest > iPush) {
-    const chest = arr.splice(iChest, 1)[0];
-    arr.splice(iPush, 0, chest);
-    out.ppl = Object.assign({}, out.ppl, { ex: arr });
+  if (rev >= PLAN_ORDER_REV) return out;
+  /* v1 顺序调整：周一两个水平推连做（仅在仍是旧顺序时） */
+  if (rev < 2 && out.ppl && Array.isArray(out.ppl.ex)) {
+    const arr = out.ppl.ex.slice();
+    const iPush = arr.findIndex(function (e) { return e.key === 'mon-2' && e.name === '哑铃坐姿推举'; });
+    const iChest = arr.findIndex(function (e) { return e.key === 'mon-3' && e.name === '坐姿推胸'; });
+    if (iPush >= 0 && iChest > iPush) {
+      const chest = arr.splice(iChest, 1)[0];
+      arr.splice(iPush, 0, chest);
+      out.ppl = Object.assign({}, out.ppl, { ex: arr });
+    }
+  }
+  /* v2→v3 补项：纯模板仍整体换（顺带把提踵 3→5 组也升级）；自定义过的只补缺失的直接组 */
+  if (out.ppl && Array.isArray(out.ppl.ex)) {
+    if (isUntouchedPplPlan(out.ppl.ex, overrides, slotModes)) {
+      out.ppl = clone({ days: DAYS_PPL, ex: EX_PPL });
+    } else {
+      out.ppl = ensureMinorAdditions(out.ppl, EX_PPL, ['mon-6', 'tue-6', 'fri-5']);
+    }
+  }
+  /* 五分化 core：原模板整周没有核心，v3 起补 arms-6 */
+  if (out.five && Array.isArray(out.five.ex)) {
+    out.five = ensureMinorAdditions(out.five, EX_FIVE, ['arms-6']);
   }
   return out;
 }
@@ -616,17 +702,20 @@ function blank() {
     garmin: Object.assign({}, GARMIN_DEFAULT),
     garminRev: GARMIN_DEFAULTS_REV,
     lastBackup: 0,
-    plate: { bar: 20, plates: [25, 20, 15, 10, 5, 2.5, 1.25] },
+    plate: { bar: 20, plates: [25, 20, 15, 10, 5, 2.5] },
     sessions: {},
     warmup: {},
     body: [],
     deload: {},
     deloadSkip: {},
+    blockSkip: {},
+    blockExtend: {},
     supersets: {},
     recovery: {},
     notes: {},
     plans: {},
     planOrderRev: PLAN_ORDER_REV,
+    diet: { log: {}, favs: [], goal: Object.assign({}, DIET_GOAL_DEFAULT), goalSet: false },
     settings: { restAlert: 'both', restRounds: 2, staleWeeks: 4, mode: 'ppl' },
   };
 }
@@ -660,19 +749,39 @@ function normalizeState(o) {
     garmin: migrateGarminDefaults(o.garmin, Number(o.garminRev) || 0),
     garminRev: GARMIN_DEFAULTS_REV,
     lastBackup: Number(o.lastBackup) || 0,
+    /* 老存档可能存着 1.25 / 0.5：本健身房没有这两档，读档时过滤掉，避免算出挂不出的方案 */
     plate: (o.plate && typeof o.plate === 'object')
-      ? { bar: Number(o.plate.bar) || 20, plates: Array.isArray(o.plate.plates) && o.plate.plates.length ? o.plate.plates.map(Number) : [25, 20, 15, 10, 5, 2.5, 1.25] }
-      : { bar: 20, plates: [25, 20, 15, 10, 5, 2.5, 1.25] },
+      ? { bar: Number(o.plate.bar) || 20, plates: (function () {
+            const list = (Array.isArray(o.plate.plates) && o.plate.plates.length ? o.plate.plates.map(Number) : [25, 20, 15, 10, 5, 2.5])
+              .filter(function (p) { return [25, 20, 15, 10, 5, 2.5].indexOf(p) >= 0; });
+            return list.length ? list : [25, 20, 15, 10, 5, 2.5];
+          })() }
+      : { bar: 20, plates: [25, 20, 15, 10, 5, 2.5] },
     sessions: (o.sessions && typeof o.sessions === 'object') ? o.sessions : {},
     warmup: (o.warmup && typeof o.warmup === 'object') ? o.warmup : {},
     body: Array.isArray(o.body) ? o.body : [],
     deload: (o.deload && typeof o.deload === 'object') ? o.deload : {},
     deloadSkip: (o.deloadSkip && typeof o.deloadSkip === 'object') ? o.deloadSkip : {},
+    blockSkip: (o.blockSkip && typeof o.blockSkip === 'object') ? o.blockSkip : {},
+    blockExtend: (o.blockExtend && typeof o.blockExtend === 'object') ? o.blockExtend : {},
     supersets: (o.supersets && typeof o.supersets === 'object') ? o.supersets : {},
     recovery: (o.recovery && typeof o.recovery === 'object') ? o.recovery : {},
     notes: (o.notes && typeof o.notes === 'object') ? o.notes : {},
-    plans: migratePlanOrder(o.plans, Number(o.planOrderRev) || 0),
+    plans: migratePlanOrder(o.plans, Number(o.planOrderRev) || 0, o.overrides, o.slotModes),
     planOrderRev: PLAN_ORDER_REV,
+    diet: (function () {
+      const d = (o.diet && typeof o.diet === 'object') ? o.diet : {};
+      const log = {};
+      Object.keys((d.log && typeof d.log === 'object') ? d.log : {}).forEach(function (k) {
+        if (validRecordDate(k) && Array.isArray(d.log[k])) log[k] = d.log[k].filter(function (e) { return e && typeof e === 'object' && e.fid; });
+      });
+      return {
+        log: log,
+        favs: Array.isArray(d.favs) ? d.favs.filter(function (f) { return f && f.id && Array.isArray(f.items); }) : [],
+        goal: Object.assign({}, DIET_GOAL_DEFAULT, (d.goal && typeof d.goal === 'object') ? d.goal : {}),
+        goalSet: !!d.goalSet,
+      };
+    })(),
     settings: Object.assign({ restAlert: 'both', restRounds: 2, staleWeeks: 4, mode: 'ppl' }, (o.settings && typeof o.settings === 'object') ? o.settings : {}),
   };
 }
@@ -821,7 +930,7 @@ const ui = {
    iOS jetsam 直接杀进程，通常不会派发 pagehide，所以关键状态变化时即时落盘，
    生命周期事件只作兜底。计时器用绝对时间戳，被杀多久都能续算。 */
 const UI_KEY = 'workout_log_ui_v1';
-const UI_TABS = ['today', 'plan', 'history', 'gear', 'cardio', 'rules', 'body', 'backup'];
+const UI_TABS = ['today', 'diet', 'plan', 'history', 'gear', 'cardio', 'rules', 'body', 'backup'];
 const CARDIO_TIMER_MAX_MS = 6 * 60 * 60 * 1000;   // 残留超过 6 小时视为过期，避免跨天续算出荒唐时长
 
 /* v18：底部只留 4 个主入口，低频页收进「更多」半屏面板。
@@ -1167,7 +1276,7 @@ function lastSessionRir(exKey, beforeDate) {
 }
 function setCount(ex, date) {
   ex = effEx(ex);
-  let n = ex.sets + (state.extra[ex.key + '|' + date] || 0);
+  let n = ex.sets + (state.extra[ex.key + '|' + date] || 0) + blockAddFor(ex, date);
   if (deloadActive(date)) n = Math.max(1, Math.round(n * 0.7));
   return n;
 }
@@ -1178,7 +1287,9 @@ function isBarbell(ex) {
   if (/哑铃|壶铃|弹力带|龙门架|器械|机|凳/.test(n)) return false;
   return /杠铃|杠|史密斯|杠铃臀推/.test(n);
 }
-const PLATE_ALL = [25, 20, 15, 10, 5, 2.5, 1.25, 0.5];
+/* 本健身房真实片库：单片 2.5 / 5 / 10 / 15 / 20 / 25 kg。没有 1.25 与 0.5 的小片，
+   所以配片计算不能再用它们——否则会算出「每边 1.25+1.25」这种实际挂不出来的方案。 */
+const PLATE_ALL = [25, 20, 15, 10, 5, 2.5];
 function computePlates(total, bar, plates) {
   if (!Number.isFinite(total) || total <= 0) return { ok: false, msg: '请输入目标重量' };
   if (total <= bar) return { ok: false, msg: '目标重量需大于杆重 ' + bar + ' kg' };
@@ -1190,7 +1301,10 @@ function computePlates(total, bar, plates) {
     while (acc + p <= each + 1e-9) { used.push(p); acc = Math.round((acc + p) * 100) / 100; }
   }
   const leftover = Math.round((each - acc) * 100) / 100;
-  return { ok: true, bar: bar, total: total, perSide: used, leftover: leftover };
+  const reachable = Math.round((bar + acc * 2) * 100) / 100;
+  const minPlate = ps.length ? Math.min.apply(null, ps) : 0;
+  return { ok: true, bar: bar, total: total, perSide: used, leftover: leftover,
+    reachable: reachable, nextUp: Math.round((reachable + minPlate * 2) * 100) / 100 };
 }
 function plateResultHTML() {
   const target = parseFloat(ui.plateTarget);
@@ -1199,7 +1313,8 @@ function plateResultHTML() {
   if (!r.ok) return '<div class="plate-none">' + esc(r.msg || '') + '</div>';
   const side = r.perSide.length ? r.perSide.join(' + ') : '0';
   const note = r.leftover > 0.01
-    ? '<div class="plate-note">⚠ 用现有片无法精确到边，差 ' + r.leftover.toFixed(2) + ' kg/边，可微调重量或加更小片</div>'
+    ? '<div class="plate-note">⚠ 这个重量配不出来（每边差 ' + r.leftover.toFixed(2) + ' kg）。按你健身房的片，最近的是 ' +
+      fmtKg(r.reachable) + ' kg 或 ' + fmtKg(r.nextUp) + ' kg</div>'
     : '<div class="plate-note">✓ 可精确配出</div>';
   /* 热身递增组：空杆 → 40% → 60% → 80%，重量按可用片就近取整 */
   const rounds = [[0.4, 10], [0.6, 8], [0.8, 3]];
@@ -1229,7 +1344,7 @@ function plateModalHTML() {
   return '<div class="modal-panel">' +
     '<div class="modal-head"><b>杠铃配片 · ' + esc(ex.name) + '</b><div class="modal-head-r"><button type="button" class="modal-x" data-act="close-modal" aria-label="关闭">✕</button></div></div>' +
     '<div class="form">' +
-    '<label class="fld"><span>目标总重量（kg）</span><input class="exf" data-plate-target type="number" inputmode="decimal" step="0.5" min="0" value="' + esc(target) + '"></label>' +
+    '<label class="fld"><span>目标总重量（kg）</span><input class="exf" data-plate-target type="number" inputmode="decimal" step="2.5" min="0" value="' + esc(target) + '"></label>' +
     '<label class="fld"><span>杆重（kg）</span><input class="exf" data-plate-bar type="number" inputmode="decimal" step="0.5" min="0" value="' + esc(state.plate.bar) + '"></label>' +
     '<div class="plate-avail"><span>可用片（kg）</span><div class="plate-chks">' + plateChecks + '</div></div>' +
     '<div id="plateResult" class="plate-result">' + plateResultHTML() + '</div>' +
@@ -1297,18 +1412,165 @@ function consecutiveTrainedWeeks() {
   return n;
 }
 function deloadActive(dateStr) {
-  return !!(state.deload && state.deload[weekStartOf(dateStr)]);
+  if (state.deload && state.deload[weekStartOf(dateStr)]) return true;
+  /* 周期化第 4 周自动减量，不需要用户点按钮；状态条里可以单独跳过 */
+  const info = blockInfo(dateStr);
+  return !!(info && info.deload);
 }
-function deloadBannerHTML() {
+/* 周期状态条：替代原来「连续 4 周了，建议减量」的被动提醒——
+   现在周期是自动推进的，条上要说清本周处在第几周、加不加组、为什么，
+   并给出两个出口（跳过本周 / 状态好就顺延），否则用户会觉得组数怎么自己变了。 */
+function blockBannerHTML() {
   if (!state.records.length) return '';
-  const wk = weekStartOf(ui.today);
-  if (state.deload[wk] || state.deloadSkip[wk]) return '';
-  const n = consecutiveTrainedWeeks();
-  if (n < 4) return '';
-  return '<div class="deload-bar"><div class="db-txt"><b>已连续训练 ' + n + ' 周</b>，本周建议安排减量：组数约 ×0.7、重量维持或略降，让关节与神经恢复，避免平台期和劳损。</div>' +
-    '<div class="db-btns">' +
-    '<button type="button" class="btn" data-act="deload-on">一键减量本周</button>' +
-    '<button type="button" class="btn sec" data-act="deload-skip">本周不减</button></div></div>';
+  const info = blockInfo(ui.today);
+  if (!info) return '';
+  const week = info.week, stage = info.stage;
+
+  if (info.deload) {
+    return '<div class="deload-bar"><div class="db-txt"><b>周期第 ' + week + ' / ' + BLOCK_WEEKS + ' 周 · 减量期</b>：本周组数 ×0.7、重量维持或略降。' +
+      '前两周加的容量已经把疲劳堆起来了，这一周让关节和神经跟上；硬顶会把下一轮的起点压低。</div>' +
+      '<div class="db-btns"><button type="button" class="btn sec" data-act="block-skip">本周不减量</button></div></div>';
+  }
+  if (info.skipped) {
+    return '<div class="deload-bar"><div class="db-txt"><b>周期第 ' + week + ' / ' + BLOCK_WEEKS + ' 周 · 本周已跳过周期调整</b>：' +
+      (week === BLOCK_WEEKS ? '按上一周的峰值组数继续练，不减量；下周回到第 1 周重新积累。' : '按模板组数练，不额外加组。') + '</div>' +
+      '<div class="db-btns"><button type="button" class="btn sec" data-act="block-resume">恢复周期调整</button></div></div>';
+  }
+
+  if (info.extended) {
+    return '<div class="deload-bar"><div class="db-txt"><b>周期第 ' + week + ' / ' + BLOCK_WEEKS + ' 周 · 顺延峰值</b>：' +
+      '你上周选了顺延，这一周继续按峰值组数练、不减量；下周回到第 1 周重新积累。状态真的下滑了再点右侧按钮直接减量。</div>' +
+      '<div class="db-btns"><button type="button" class="btn sec" data-act="deload-on">不延了，本周减量</button></div></div>';
+  }
+
+  const main = blockMainLift(ui.today);
+  const sincePR = main ? weeksSincePR(main.key, ui.today) : null;
+  const nextExtend = !!(state.blockExtend && state.blockExtend[weekStartOf(shiftDay(ui.today, 7))]);
+  let extra = '', extraBtn = '';
+  /* 2 周没刷 e1RM 就值得提示：连续训练到第 3 周时最多也只有 2 周历史可对照，
+     阈值设 3 永远触发不到；而到第 4 周已经自动减量，不需要再提示。 */
+  if (nextExtend) {
+    extra = '下周已设为<b>顺延峰值</b>（不减量），下周走完再回到第 1 周重新积累。';
+    extraBtn = '<button type="button" class="btn sec" data-act="block-extend-cancel">取消顺延</button>';
+  } else if (week >= 2 && sincePR !== null && sincePR >= 2) {
+    extra = '但主项 <b>' + esc(main.name) + '</b> 已 ' + sincePR + ' 周没刷新 e1RM：这通常不是练得不够，而是疲劳盖住了表现。建议本周直接减量，别再往上加组。';
+    extraBtn = '<button type="button" class="btn" data-act="deload-on">提前减量本周</button>';
+  } else if (week === BLOCK_WEEKS - 1 && sincePR === 0) {
+    extra = '主项 <b>' + esc(main.name) + '</b> 本周刚刷新 e1RM，状态还在涨。可以顺延一周再减量，把这一波吃完。';
+    extraBtn = '<button type="button" class="btn" data-act="block-extend">顺延一周再减量</button>';
+  }
+
+  const addTxt = info.add
+    ? ('本周每个训练日给' + (info.add === 1 ? '第一个' : '前两个') + '复合动作各 +1 组')
+    : '本周不加组';
+  return '<div class="deload-bar"><div class="db-txt"><b>周期第 ' + week + ' / ' + BLOCK_WEEKS + ' 周 · ' + esc(stage.label) + '</b>：' +
+    esc(stage.desc) + '，' + addTxt + (info.totalWeeks > BLOCK_WEEKS ? '（已连续训练 ' + info.totalWeeks + ' 周）' : '') + '。' +
+    (extra ? '<br>' + extra : '') + '</div>' +
+    '<div class="db-btns">' + extraBtn +
+    '<button type="button" class="btn sec" data-act="block-skip">本周跳过加量</button></div></div>';
+}
+
+/* ================= ④ 容量周期化：3 周累积 + 1 周减量 =================
+   周容量平推不会一直有效：容量长期不变，身体适应后 e1RM 就会停涨。
+   标准做法是 4 周一个 block——第 1 周基础、第 2/3 周给复合动作 +1 / +2 组、
+   第 4 周减到 ×0.7 把疲劳倒掉，再进下一轮。周期位置按「已经连续练了几周」自动推算，
+   不需要用户手动开周期；停练两周以上会自然回到第 1 周重新累积。
+
+   为什么加量只加复合动作：孤立动作本身疲劳低，加组对增长的边际贡献远小于复合动作，
+   却要占同样的恢复预算。每天最多加 2 组，单日容量不会因此堆过 20 组。
+
+   三种手动干预，都只影响本周、不动历史记录：
+   blockSkip    本周跳过加量，按模板组数练；
+   blockExtend  第 4 周顺延——本周继续峰值，下周直接开始新周期（跳过这次减量）；
+   deloadOn     提前减量，任何时候都能用（即原来的「一键减量本周」）。 */
+const BLOCK_WEEKS = 4;
+const COMPOUND_PATTERNS = ['水平推', '垂直推', '水平拉', '垂直拉', '膝主导', '膝伸', '髋铰链', '髋伸', '膝屈'];
+const BLOCK_STAGES = [
+  { add: 0, label: '积累期 · 基础', desc: '按模板组数练，先把动作质量和重量稳住' },
+  { add: 1, label: '积累期 · 加量', desc: '当天第一个复合动作 +1 组' },
+  { add: 2, label: '积累期 · 峰值', desc: '当天前两个复合动作各 +1 组，本周容量最高' },
+  { add: 0, label: '减量期', desc: '组数 ×0.7、重量维持，把疲劳倒掉再进下一轮' },
+];
+let blockCache = {};
+function weekdayKeyOfDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return WEEKDAY_KEYS[Number.isFinite(d.getTime()) ? d.getDay() : new Date().getDay()];
+}
+function shiftDay(dateStr, n) {
+  return todayStr(new Date(new Date(dateStr + 'T00:00:00').getTime() + n * 86400000));
+}
+/* 到该周为止连续练了几周。当周还没有记录时按上周算，
+   否则周一早上打开会显示成「未开始」，周期位置每周一跳就乱。 */
+function trainedWeeksEndingAt(ws) {
+  let n = 0;
+  const d = new Date(ws + 'T00:00:00');
+  if (weekCount(state.records, d) === 0) d.setDate(d.getDate() - 7);
+  while (weekCount(state.records, d) > 0) {
+    n++;
+    d.setDate(d.getDate() - 7);
+  }
+  return n;
+}
+function blockInfo(dateStr) {
+  const ws = weekStartOf(dateStr);
+  if (blockCache[ws] !== undefined) return blockCache[ws];
+  let out = null;
+  const n = trainedWeeksEndingAt(ws);
+  if (n > 0) {
+    const idx = (n - 1) % BLOCK_WEEKS;
+    const last = idx === BLOCK_WEEKS - 1;
+    const skipped = !!(state.blockSkip && state.blockSkip[ws]);
+    const forced = !!(state.deload && state.deload[ws]);
+    const skipDeload = !!(state.deloadSkip && state.deloadSkip[ws]);
+    const extend = !!(state.blockExtend && state.blockExtend[ws]) && last;
+    /* 减量周点「本周不减量」= 不减量，而不是打回基础周：
+       上一周是峰值（每天前两个复合动作 +1），这里必须沿用峰值组数，
+       否则用户按「不减量」会反而从 4 组掉回 3 组。 */
+    const keepPeak = last && skipped && !forced && !extend;
+    out = {
+      ws: ws, week: idx + 1, totalWeeks: n, last: last,
+      stage: BLOCK_STAGES[idx], skipped: skipped, extended: extend, forced: forced,
+      add: forced ? 0 : (skipped ? (keepPeak ? BLOCK_STAGES[BLOCK_WEEKS - 2].add : 0)
+        : (extend ? BLOCK_STAGES[BLOCK_WEEKS - 2].add : BLOCK_STAGES[idx].add)),
+      deload: forced || (last && !skipped && !skipDeload && !extend),
+    };
+  }
+  blockCache[ws] = out;
+  return out;
+}
+function compoundListOfDay(dateStr) {
+  const day = weekdayKeyOfDate(dateStr);
+  const mode = (state.settings && state.settings.mode) || 'ppl';
+  return planSource(mode).ex.filter(function (e) {
+    return e.day === day && COMPOUND_PATTERNS.indexOf(e.pattern) >= 0;
+  });
+}
+function blockAddFor(ex, dateStr) {
+  const info = blockInfo(dateStr);
+  if (!info || !info.add) return 0;
+  const list = compoundListOfDay(dateStr);
+  for (let i = 0; i < list.length && i < info.add; i++) {
+    if (list[i].key === ex.key) return 1;
+  }
+  return 0;
+}
+function blockMainLift(dateStr) {
+  const day = weekdayKeyOfDate(dateStr);
+  const mode = (state.settings && state.settings.mode) || 'ppl';
+  const list = planSource(mode).ex.filter(function (e) { return e.day === day; });
+  return list.length ? effEx(list[0]) : null;
+}
+/* 主项上一次刷新 e1RM 是几周前。含当天记录，所以本周刚破 PR 会返回 0。
+   注意要拿「最后一次 PR 那天」去算，不能用最后一次训练那天——否则一直没涨时
+   差值恒为 0，会被误判成「刚创新高」。 */
+function weeksSincePR(exKey, dateStr) {
+  const sess = sessionsWithBestE1RM(exKey, shiftDay(dateStr, 1));
+  if (sess.length < 2) return null;
+  let best = sess[0].e1rm, lastPR = 0;
+  for (let i = 1; i < sess.length; i++) {
+    if (sess[i].e1rm > best * 1.01) { best = sess[i].e1rm; lastPR = i; }
+  }
+  return Math.max(0, Math.round(daysBetween(sess[lastPR].date, dateStr) / 7));
 }
 
 /* ================= 晨间恢复打卡（佳明 255 数据 · 手动录入） =================
@@ -1469,6 +1731,16 @@ function supersetModalHTML(exKey) {
   const partner = supersetPartner(exKey);
   const sameDay = dayPositions(dayKey).filter(p => p.type === 'strength' && p.key !== exKey)
     .map(p => findEx(p.key)).filter(Boolean);
+  const recos = presetPairsForDay(dayKey);
+  const recoHTML = recos.length
+    ? '<div class="reco-box"><div class="reco-title">⭐ 按训练科学推荐</div>' + recos.map(function (p) {
+        const e1 = findEx(p.a), e2 = findEx(p.b);
+        const on = supersetPartner(p.a) === p.b;
+        return '<button type="button" class="swap-item reco" data-act="pair-preset" data-a="' + esc(p.a) + '" data-b="' + esc(p.b) + '">' +
+          '<span class="si-name">' + esc((e1 || {}).name || p.a) + ' ↔ ' + esc((e2 || {}).name || p.b) + (on ? ' <i class="cur">已配对</i>' : '') + '</span>' +
+          '<span class="si-meta">' + esc(p.why) + '</span></button>';
+      }).join('') + '</div>'
+    : '';
   const listHTML = sameDay.map(e2 => e2 && effEx(e2)).map(e2 =>
     '<button type="button" class="swap-item' + (partner === e2.key ? ' current' : '') + '" data-act="superset-pick" data-ex="' + exKey + '" data-pair="' + e2.key + '">' +
     '<span class="si-name">' + esc(e2.name) + (partner === e2.key ? ' <i class="cur">当前配对</i>' : '') + '</span>' +
@@ -1476,7 +1748,8 @@ function supersetModalHTML(exKey) {
   ).join('');
   return '<div class="modal-panel">' +
     '<div class="modal-head"><b>超级组配对 · ' + esc(ex.name) + '</b><div class="modal-head-r"><button type="button" class="modal-x" data-act="close-modal" aria-label="关闭">✕</button></div></div>' +
-    '<div class="swap-top"><div class="swap-tip">把两个动作绑成 <b>A1 / A2 交替做</b>：做完 A1 一组不休息（或只歇 30 秒）接 A2 一组，两样都完成为一轮。省时间，适合互不抢力的搭配（如推 + 拉）。</div></div>' +
+    '<div class="swap-top"><div class="swap-tip">把两个动作绑成 <b>A1 / A2 交替做</b>：做完 A1 一组不休息（或只歇 30 秒）接 A2 一组，两样都完成为一轮。省时间，适合互不抢力的搭配（如推 + 拉）。配好后训练中完成一组会自动提示接下来去做谁；点卡片上的「↔ A1/A2」标签可直接跳到对方。</div></div>' +
+    recoHTML +
     '<div class="swap-list">' + (listHTML || '<div class="swap-empty">当天没有其他力量动作可配对。</div>') + '</div>' +
     (partner ? '<div class="swap-foot"><button type="button" class="reset-ex" data-act="superset-clear" data-ex="' + exKey + '">解除配对</button></div>' : '') +
     '</div>';
@@ -1486,10 +1759,21 @@ function openSupersetModal(exKey) {
   modal.innerHTML = '<div class="modal-mask" data-act="close-modal"></div>' + supersetModalHTML(exKey);
   modal.classList.remove('hidden');
 }
+/* 配对是双向的：改配时必须先拆掉旧伙伴的反向指针。
+   否则 A 从 X 改配到 B 后，X 仍然指向 A —— 旧卡片会一直挂着「交替」标签，
+   做完那组还会提示去做一个已经不属于它的动作。 */
+function bindSuperset(a, b) {
+  const cut = function (k, keep) {
+    const old = state.supersets[k];
+    if (old && old !== keep) delete state.supersets[old];
+  };
+  cut(a, b); cut(b, a);
+  state.supersets[a] = b;
+  state.supersets[b] = a;
+}
 function setSuperset(exKey, pairKey) {
   if (!pairKey) return;
-  state.supersets[exKey] = pairKey;
-  state.supersets[pairKey] = exKey;
+  bindSuperset(exKey, pairKey);
   save(); closeModal(); render();
   toast('已配对超级组：' + (findEx(exKey) || {}).name + ' ↔ ' + (findEx(pairKey) || {}).name);
 }
@@ -1499,6 +1783,23 @@ function clearSuperset(exKey) {
   if (p) delete state.supersets[p];
   save(); closeModal(); render();
   toast('已解除配对');
+}
+/* 卡片上「↔ A1/A2」标签：编号按当天动作顺序，先出现的为 A1 */
+function supersetSelfLabel(exKey) {
+  const pairKey = supersetPartner(exKey);
+  if (!pairKey) return '';
+  const keys = dayPositions(exKey.split('-')[0]).map(function (p) { return p.key; });
+  return keys.indexOf(exKey) >= 0 && keys.indexOf(pairKey) >= 0 && keys.indexOf(exKey) < keys.indexOf(pairKey) ? 'A1' : 'A2';
+}
+/* 点配对标签 → 滚动到对方卡片并闪烁提示 */
+function pairJump(exKey) {
+  const card = document.querySelector('.card[data-ex="' + exKey + '"]');
+  if (!card) return;
+  try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { card.scrollIntoView(); }
+  card.classList.remove('jump-flash');
+  void card.offsetWidth;
+  card.classList.add('jump-flash');
+  setTimeout(function () { card.classList.remove('jump-flash'); }, 1800);
 }
 
 /* ================= ⑥ 训练完成总结 ================= */
@@ -1515,6 +1816,26 @@ function sessionSummaryHTML() {
   state.records.filter(r => r.date < ui.today).forEach(r => { prevMax[r.exKey] = Math.max(prevMax[r.exKey] || 0, Number(r.weight) || 0); });
   const prs = recs.filter(r => prevMax[r.exKey] && (Number(r.weight) || 0) > prevMax[r.exKey]);
   const prHTML = prs.length ? prs.map(r => '<div class="ss-pr">🏆 ' + esc(r.exName) + ' ' + r.weight + ' kg × ' + r.reps + '<span>此前最大 ' + prevMax[r.exKey] + ' kg</span></div>').join('') : '';
+  /* 组内掉次数：第一组 → 最后一组的次数掉幅。掉幅本身比总容量更能解释
+     「下次该不该加重」：>35% 多半是组间休息被压缩或负荷偏高。 */
+  const byEx = {};
+  recs.forEach(function (r) { (byEx[r.exKey] = byEx[r.exKey] || []).push(r); });
+  const drops = [];
+  Object.keys(byEx).forEach(function (k) {
+    const list = byEx[k].slice().sort(function (a, b) { return a.setIndex - b.setIndex; });
+    if (list.length < 2) return;
+    const f0 = Number(list[0].reps) || 0, f1 = Number(list[list.length - 1].reps) || 0;
+    if (f0 <= 0 || f1 <= 0) return;
+    const pct = Math.round((1 - f1 / f0) * 100);
+    if (pct < 25) return;
+    drops.push({ name: list[0].exName || k, first: f0, last: f1, pct: pct });
+  });
+  const dropHTML = drops.length ? '<div class="ss-drops">' + drops.map(function (d) {
+    return '<div class="ss-drop">📉 ' + esc(d.name) + ' 组内掉次数 ' + d.first + ' → ' + d.last + '（−' + d.pct + '%）' +
+      '<span>' + (d.pct >= 35
+        ? '掉幅偏大：先确认组间休息有没有被压缩（主项 2—3 分钟），补足后仍这样掉就降一档（杠铃 5 kg、哑铃 2.5 kg）'
+        : '尚在正常疲劳范围，别把组间休息压到目标值以下') + '</span></div>';
+  }).join('') + '</div>' : '';
   return '<div class="modal-panel">' +
     '<div class="modal-head"><b>今天练完了 🎉</b><div class="modal-head-r"><button type="button" class="modal-x" data-act="close-modal" aria-label="关闭">✕</button></div></div>' +
     '<div class="ss-grid">' +
@@ -1525,6 +1846,7 @@ function sessionSummaryHTML() {
     '</div>' +
     (heaviest ? '<div class="ss-line">💪 最重一组：' + esc(heaviest.exName) + ' ' + heaviest.weight + ' kg × ' + heaviest.reps + '</div>' : '') +
     (prHTML ? '<div class="ss-prs">' + prHTML + '</div>' : '') +
+    dropHTML +
     '<div class="form-actions">' +
     '<button type="button" class="fbtn primary" data-act="close-modal">收工</button>' +
     (FEATURE_GARMIN_EXPORT ? '<button type="button" class="fbtn" data-act="garmin-one" data-date="' + esc(ui.today) + '">⇩ 导出今天佳明</button>' : '') +
@@ -1796,13 +2118,55 @@ function isAssisted(ex) {
   const n = (ex && ex.name) || '';
   return /助力/.test(n);
 }
-// 不同动作类型的加重步长与百分比：复合杠铃/史密斯 +2.5—5kg，孤立 +1.25—2.5kg，哑铃 +1—2kg，器械片垛 +2.5kg
+/* ================= 器械真实档位（按本健身房配置） =================
+   杠铃：片 2.5 / 5 / 10 / 15 / 20 / 25 kg，最小片 2.5 → 每边最少加一片 ⇒ 总重最小 +5 kg，
+         所以杠铃重量只能落在 5 kg 网格上（杆 20 kg、10 kg 曲杆都是 5 的倍数）。
+   哑铃：单只 5 kg 起、每档 +2.5 kg ⇒ 只有 5 / 7.5 / 10 / 12.5 / 15…，1 kg 的步长根本不存在。
+   片垛 / 龙门架 / 助力器械：插销或配重片按 2.5 kg 一档。
+   百分比（pct）只决定「跳几档」，最终数字一律回到真实档位，保证写在卡片上的重量当场能上。 */
+const GYM_LOAD = {
+  barbell:   { step: 5,   min: 20, pct: 0.04, label: '杠铃' },   // min = 空杆
+  dumbbell:  { step: 2.5, min: 5,  pct: 0.025, label: '哑铃' },
+  machine:   { step: 2.5, min: 0,  pct: 0.025, label: '片垛' },
+  bodyweight:{ step: 2.5, min: 0,  pct: 0.025, label: '负重' },
+  assisted:  { step: 2.5, min: 0,  pct: 0.025, label: '助力' },
+};
 function incrementSpec(ex) {
-  if (isBodyweight(ex)) return { step: 1.25, pct: 0.025, bodyweight: true };
-  if (isDumbbell(ex)) return { step: 1, pct: 0.025 };
-  if (isBarbellLike(ex) && isCompound(ex)) return { step: 2.5, pct: 0.04 };
-  if (isBarbellLike(ex) && !isCompound(ex)) return { step: 1.25, pct: 0.025 };
-  return { step: 2.5, pct: 0.025 }; // 固定器械 / 龙门架 片垛
+  if (isAssisted(ex)) return Object.assign({ kind: 'assisted' }, GYM_LOAD.assisted);
+  if (isBodyweight(ex)) return Object.assign({ kind: 'bodyweight', bodyweight: true }, GYM_LOAD.bodyweight);
+  if (isDumbbell(ex)) return Object.assign({ kind: 'dumbbell' }, GYM_LOAD.dumbbell);
+  if (isBarbellLike(ex) && isCompound(ex)) return Object.assign({ kind: 'barbell' }, GYM_LOAD.barbell);
+  if (isBarbellLike(ex)) return Object.assign({ kind: 'barbell', pct: 0.025 }, GYM_LOAD.barbell);
+  return Object.assign({ kind: 'machine' }, GYM_LOAD.machine);
+}
+/* 把任意重量吸附到真实档位：dir=-1 向下（保守，用于「他实际做到的是哪一档」），dir=+1 向上 */
+function alignLoad(w, spec, dir) {
+  const step = spec.step, min = spec.min || 0;
+  const n = (dir < 0 ? Math.floor(w / step + 1e-9) : Math.ceil(w / step - 1e-9)) * step;
+  return Math.max(min, Math.round(n * 100) / 100);
+}
+/* 在真实档位上跳 k 档：k 由目标百分比换算，最少 1 档（一档就是能上到的最小变化量）。
+   先把起点吸附到「他真正上得到的档」（历史里可能出现 62.5 这种配不出来的数），再跳档，
+   所以结果一定是真实可达的重量，不会给出 62.5 / 63 这种要给每边挂 1.25 的值。 */
+function stepLoad(w, spec, pct, dir) {
+  const min = spec.min || 0;
+  const base = alignLoad(w, spec, -1);
+  const k = Math.max(1, Math.round((base || w) * pct / spec.step));
+  let to = Math.round((base + dir * k * spec.step) * 100) / 100;
+  if (dir > 0 && to <= w) to = Math.round((base + (k + 1) * spec.step) * 100) / 100;
+  if (dir < 0 && to >= w) to = Math.round((base - (k + 1) * spec.step) * 100) / 100;
+  return Math.max(min, to);
+}
+/* 一句能当场执行的话：杠铃给每边挂多少，哑铃给换哪一档，器械给插几格 */
+function loadHint(spec, fromW, toW) {
+  const d = Math.round(Math.abs(toW - fromW) * 100) / 100;
+  if (spec.kind === 'barbell') {
+    return '每边' + (toW > fromW ? '各加 ' : '各减 ') + fmtKg(d / 2) + ' kg';
+  }
+  if (spec.kind === 'dumbbell') return '换 ' + fmtKg(toW) + ' kg 的哑铃（单只）';
+  if (spec.kind === 'assisted') return '助力片' + (toW < fromW ? '减 ' : '加 ') + fmtKg(d) + ' kg';
+  if (spec.kind === 'bodyweight') return '负重' + (toW > fromW ? '加 ' : '减 ') + fmtKg(d) + ' kg';
+  return '插销' + (toW > fromW ? '加 ' : '减 ') + fmtKg(d) + ' kg';
 }
 // 平台期：取该动作各次训练第一组重量，看距离上次创重量新高已隔多少次训练
 function sessionsWithFirstWeight(exKey, beforeDate) {
@@ -1816,15 +2180,33 @@ function daysBetween(a, b) {
   const da = new Date(a + 'T00:00:00'), db = new Date(b + 'T00:00:00');
   return Math.round((db - da) / 86400000);
 }
+/* 每次训练的最佳单组 e1RM。平台期必须用它判断，不能只看第一组重量：
+   双进阶的正常节奏是「先加次数、再加重量」，只看重量会把加次数的那几周
+   误判成停滞（60 kg 从 6 次练到 10 次，重量没变，但 e1RM 72 → 80 kg）。 */
+function sessionsWithBestE1RM(exKey, beforeDate) {
+  const dates = [...new Set(state.records.filter(r => r.exKey === exKey && r.date < beforeDate && segMatches(r, exKey)).map(r => r.date))].sort();
+  return dates.map(d => {
+    const s = recsFor(exKey, d);
+    let e1 = 0;
+    s.forEach(function (r) {
+      const w = Number(r.weight) || 0, rp = Number(r.reps) || 0;
+      if (w > 0 && rp > 0) e1 = Math.max(e1, est1RM(w, rp));
+    });
+    return { date: d, e1rm: e1, w: s.length ? (Number(s[0].weight) || 0) : 0 };
+  }).filter(x => x.e1rm > 0);
+}
 function plateauInfo(ex, date) {
-  const sess = sessionsWithFirstWeight(ex.key, date).filter(s => s.w > 0);
+  const sess = sessionsWithBestE1RM(ex.key, date);
   if (sess.length < 4) return null;
-  let best = 0, lastPR = 0;
-  sess.forEach((s, i) => { if (s.w > best) { best = s.w; lastPR = i; } });
+  let best = sess[0].e1rm, lastPR = 0;
+  for (let i = 1; i < sess.length; i++) {
+    /* 1% 以内算同一水平：e1RM 是估算值，有舍入与 RIR 口径噪声 */
+    if (sess[i].e1rm > best * 1.01) { best = sess[i].e1rm; lastPR = i; }
+  }
   const stuck = sess.length - 1 - lastPR;
   if (stuck < 4) return null;
   const weeks = Math.max(1, Math.round(daysBetween(sess[lastPR].date, sess[sess.length - 1].date) / 7));
-  return { stuck: stuck, weeks: weeks, best: best };
+  return { stuck: stuck, weeks: weeks, best: Math.round(best * 10) / 10, bestWeight: sess[sess.length - 1].w };
 }
 function progression(ex, date) {
   ex = effEx(ex);
@@ -1837,6 +2219,31 @@ function progression(ex, date) {
   const firstRir = (first.rir === undefined || first.rir === null || first.rir === '') ? null
     : (first.rir >= 5 ? 5 : Number(first.rir));
   const firstAtTop = first && Number(first.reps || 0) >= ex.repMax;
+  const firstReps = Number((first && first.reps) || 0);
+  const firstW = Number((first && first.weight) || 0);
+  /* 低于次数区间下限：说明负荷明显偏高。此时继续「在区间内加次数」是反的，
+     应先降回次数区间，再谈加重；降多少由器械档位决定（见 stepLoad）。 */
+  if (firstReps > 0 && firstReps < ex.repMin) {
+    const spec = incrementSpec(ex);
+    let to = null, hint = '';
+    let baseW = firstW;
+    if (firstW > 0 && !isBodyweight(ex)) {
+      /* 基准与目标都必须是真实档位：杠铃一档 5 kg、哑铃一档 2.5 kg。
+         历史里出现的 62.5 这类「配不出来」的数，先吸附到 60 再算，否则会提示「每边减 1.25」。 */
+      baseW = alignLoad(firstW, spec, -1);
+      if (baseW <= (spec.min || 0) && firstW > (spec.min || 0)) baseW = Math.max(spec.min || 0, firstW);
+      to = stepLoad(firstW, spec, 0.07, -1);
+      hint = loadHint(spec, baseW, to);
+    }
+    const dropPct = to ? Math.round((baseW - to) / baseW * 100) : 0;
+    return {
+      level: 'down',
+      text: '第一组只做到 ' + firstReps + ' 次，低于 ' + ex.repMin + ' 次下限 → 负荷偏高' +
+        (to ? '，本次建议先降到 ' + fmtKg(to) + ' kg（' + hint + '，约 −' + dropPct + '%）' : '，先降一档再试') +
+        '，把次数重新做回 ' + ex.repMin + '—' + ex.repMax + ' 次，再谈加重',
+      next: to ? { from: baseW, to: to, inc: -(Math.round((baseW - to) * 100) / 100), pct: dropPct, hint: hint } : null,
+    };
+  }
   if (firstAtTop) {
     // 第一组已到上限，但上次没记 RIR → 提示去记 RIR，而不是直接给加重建议（避免无依据乱加）
     if (firstRir === null) {
@@ -1848,23 +2255,22 @@ function progression(ex, date) {
         : (Number(first.weight) || 0);
       const spec = incrementSpec(ex);
       let next = null;
+      /* 起点吸附到真实档位：万一历史记的是 62.5（杠铃配不出来），基准按 60 算，
+         这样「每边各加」的数字才是真能挂上去的片。 */
+      const baseW = fromW > 0 ? alignLoad(fromW, spec, -1) : 0;
       if (isAssisted(ex)) {
-        // 助力动作：减少助力重量 = 加重（自重成分更高）
-        if (fromW > 0) {
-          let dec = Math.round((fromW * spec.pct) / spec.step) * spec.step;
-          dec = Math.max(spec.step, dec);
-          const to = Math.round((fromW - dec) / spec.step) * spec.step;
-          const realDec = Math.round((fromW - to) * 100) / 100;
-          const pct = Math.round(realDec / fromW * 100);
-          next = { from: fromW, inc: -realDec, to: to, pct: pct, assisted: true };
+        // 助力动作：助力片减一档 = 自身承担更多体重，等价于加重
+        if (baseW > 0) {
+          const to = stepLoad(baseW, spec, spec.pct, -1);
+          const realDec = Math.round((baseW - to) * 100) / 100;
+          const pct = Math.round(realDec / baseW * 100);
+          next = { from: baseW, to: to, inc: -realDec, pct: pct, assisted: true, hint: loadHint(spec, baseW, to) };
         }
-      } else if (fromW > 0) {
-        let inc = Math.round((fromW * spec.pct) / spec.step) * spec.step;
-        inc = Math.max(spec.step, inc);
-        const to = Math.round((fromW + inc) / spec.step) * spec.step;
-        const realInc = Math.round((to - fromW) * 100) / 100;
-        const pct = Math.round(realInc / fromW * 100);
-        next = { from: fromW, inc: realInc, to: to, pct: pct, bodyweight: !!spec.bodyweight };
+      } else if (baseW > 0) {
+        const to = stepLoad(baseW, spec, spec.pct, 1);
+        const realInc = Math.round((to - baseW) * 100) / 100;
+        const pct = Math.round(realInc / baseW * 100);
+        next = { from: baseW, to: to, inc: realInc, pct: pct, bodyweight: !!spec.bodyweight, hint: loadHint(spec, baseW, to) };
       }
       let text = '第一组做到 ' + ex.repMax + ' 次且还有余力（RIR ' + firstRir + '）→ 本次该' + (next && next.assisted ? '减少助力' : '加重量');
       if (next) {
@@ -1872,11 +2278,16 @@ function progression(ex, date) {
         else if (next.bodyweight) text += '：负重加到 ' + fmtKg(next.to) + ' kg（上次 ' + fmtKg(next.from) + ' → +' + fmtKg(next.inc) + '，约 +' + next.pct + '%）';
         else text += '：加到 ' + fmtKg(next.to) + ' kg（上次 ' + fmtKg(next.from) + ' → +' + fmtKg(next.inc) + '，约 +' + next.pct + '%）';
       } else if (isBodyweight(ex)) {
-        text += '（自重动作：先在本区间加次数，第一组到上限后改加负重，如负重腰带 / 弹力带 +2.5—5kg）';
+        text += '（自重动作：先在本区间加次数，第一组到上限后改加负重片，最小一片 2.5 kg）';
       } else {
-        text += '（上次没记重量，请按 +2.5%—5% 加重）';
+        text += '（上次没记重量：' + (spec.kind === 'barbell' ? '杠铃先加 5 kg，即每边各 2.5' : spec.kind === 'dumbbell' ? '哑铃加一档，即单只 +2.5 kg' : '先加一档 ' + fmtKg(spec.step) + ' kg') + '）';
       }
       text += '，次数回落到 ' + ex.repMin + '—' + ex.repMax + ' 次';
+      /* 哑铃每档 2.5 kg，对 10 kg 这种小重量就是 +25%：跳档天生偏大。
+         给出退路，避免为了跳档把动作做成代偿。 */
+      if (spec.kind === 'dumbbell' && next && next.pct >= 15) {
+        text += '。哑铃一档固定 2.5 kg，跳档幅度偏大属正常；若换档后第一组做不到 ' + ex.repMin + ' 次，就在原重量再多练一周把次数练稳';
+      }
       return { level: 'up', text: text, next: next };
     }
   }
@@ -1976,21 +2387,51 @@ function toast(msg) {
   clearTimeout(ui.toastHandle);
   ui.toastHandle = setTimeout(() => el.classList.add('hidden'), 1900);
 }
-/* 键盘弹起时 fixed 元素仍贴在布局视口底部，会被键盘整个盖住（撤销按钮点不到）。
-   用 visualViewport 算出键盘高度，把提示条顶到键盘上方。 */
+/* 键盘弹起时 fixed 元素仍按布局视口贴底，会被键盘整个盖住：
+   提示条点不到、底部弹层（饮食搜索等）被推到屏幕下方看不到输入内容。
+   用 visualViewport 算出键盘高度，写进 --kb 让所有底部弹层抬到键盘上方，
+   提示条也一并顶上去。 */
+/* 键盘高度有两个来源，取较大值写进 --kb：
+   1) 原生壳通过 __setKeyboardHeight 直接注入（iOS WKWebView 的 visualViewport
+      在 user-scalable 受限时不更新，必须靠原生 UIKeyboard 通知才可靠）；
+   2) visualViewport 兜底（普通浏览器 / 网页端）。
+   两类来源都收敛到 applyKeyboard，避免互相覆盖。 */
+let _kbNative = 0, _kbVV = 0;
+function applyKeyboard() {
+  const kb = Math.max(_kbNative, _kbVV);
+  document.documentElement.style.setProperty('--kb', (kb > 100 ? kb : 0) + 'px');
+  const el = document.getElementById('toast');
+  if (el && !el.classList.contains('hidden')) {
+    el.style.bottom = kb > 100 ? (kb + 16) + 'px' : '';
+  }
+}
+/* 单独暴露：toastAction 等在展示提示时立即按当前键盘高度摆位。 */
 function placeToast(el) {
   if (!el) return;
-  const vv = window.visualViewport;
-  if (!vv) { el.style.bottom = ''; return; }
-  const kb = Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0));
+  const kb = Math.max(_kbNative, _kbVV);
   el.style.bottom = kb > 100 ? (kb + 16) + 'px' : '';
 }
-if (window.visualViewport && window.visualViewport.addEventListener) {
-  window.visualViewport.addEventListener('resize', function () {
-    const el = document.getElementById('toast');
-    if (el && !el.classList.contains('hidden')) placeToast(el);
-  });
+/* 原生层键盘通知回调入口（UIKeyboardWillShow/Hide）。 */
+window.__setKeyboardHeight = function (px) {
+  _kbNative = Math.max(0, Number(px) || 0);
+  applyKeyboard();
+};
+function syncKeyboard() {
+  const vv = window.visualViewport;
+  _kbVV = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
+  applyKeyboard();
 }
+if (window.visualViewport && window.visualViewport.addEventListener) {
+  window.visualViewport.addEventListener('resize', syncKeyboard);
+  window.visualViewport.addEventListener('scroll', syncKeyboard);
+}
+/* 打开弹层/聚焦输入框时同步一次：键盘弹起有延迟，避免第一帧仍贴底。
+   用捕获阶段的委托，覆盖所有动态创建的弹层与输入框。 */
+document.addEventListener('focusin', function () {
+  [60, 300, 600].forEach(function (ms) { setTimeout(syncKeyboard, ms); });
+}, true);
+window.addEventListener('resize', syncKeyboard);
+syncKeyboard();
 /* 可撤销提示：文案 + 一个「撤销」按钮。自动保存没有二次确认的机会，
    所以删除/清空这类动作必须留一条 6 秒的后悔通道。 */
 function toastAction(msg, label, cb, ms) {
@@ -2161,7 +2602,7 @@ function reviewHTML(date) {
     (nextD ? '<button type="button" class="rv-navbtn" data-act="review-date" data-date="' + esc(nextD) + '">' + dateLabel(nextD) + ' ›</button>'
       : '<span class="rv-navoff">没有更晚记录 ›</span>') +
     '</div>';
-  return '<div class="rv-head"><div class="rv-brand">训练日记 · 记录回看</div>' +
+  return '<div class="rv-head"><div class="rv-brand">无限进步 · 记录回看</div>' +
     '<div class="rv-date">' + esc(d) + ' ' + wd + '<span class="rv-ro">只读</span></div></div>' +
     '<div class="rv-notice">这一天的实际记录（逐组重量 / 次数 / RIR / PR）。页面只读，不会改动任何数据。</div>' +
     nav + stats + groups + cardioRows + empty +
@@ -2170,12 +2611,14 @@ function reviewHTML(date) {
 
 function render() {
   const y = window.scrollY;
+  blockCache = {};   // 周期状态随日期 / 记录 / 跳过标记变化，每次渲染重算
   document.getElementById('app').innerHTML = view();
   syncTabs();
   syncMoreDot();
   window.scrollTo(0, y);
   tickSession();
   saveUI();   // 任何界面状态变化即时落盘，iOS 直接杀进程也能留住
+  autoGrowAll(document);   // 计划编辑页的长要点按内容撑开，不再只露一行
 }
 
 function view() {
@@ -2185,6 +2628,7 @@ function view() {
   /* B：跨天提示在所有主页面都可见（用户可能停在历史 / 计划页过了午夜） */
   const banner = rolloverBannerHTML();
   if (ui.tab === 'history') return head + banner + '<div class="section-title">训练历史 · 最近 60 天（含有氧）</div>' + historyHTML();
+  if (ui.tab === 'diet') return head + banner + dietHTML();
   if (ui.tab === 'gear') return head + banner + gearHTML();
   if (ui.tab === 'cardio') return head + banner + cardioTabHTML();
   if (ui.tab === 'rules') return head + banner + rulesHTML();
@@ -2240,10 +2684,448 @@ function headerHTML() {
         : state.records.length + ' 条记录';
   const backMore = isMoreTab(ui.tab) ? '<button type="button" class="top-more" data-act="open-more">‹ 更多</button>' : '';
   return '<div class="sticky"><div class="top">' +
-    '<div class="top-row"><div class="brand">' + backMore + '训练日记</div><div class="date">' + dateLabel(ui.today) + ' ' + wd + '</div></div>' +
+    '<div class="top-row"><div class="brand">' + backMore + '无限进步</div><div class="date">' + dateLabel(ui.today) + ' ' + wd + '</div></div>' +
     '<div class="sub">' + sub + '</div>' +
     '<div class="progress"><div class="bar"><i style="width:' + pr.pct + '%"></i></div><span class="pnum">' + num + '</span></div>' +
     '</div></div>';
+}
+
+/* ============================================================
+   饮食模块（第一批）：今日记录 + 食物库 + 目标 + 体重趋势
+   数据全部挂在 state.diet，随 JSON 备份 / 云同步整体带走；
+   体重直接复用 state.body，不另起一份。
+   ============================================================ */
+
+/* 食物库来自 foods.js（离线内置），找不到时给空表，保证 app 不崩 */
+function foodDB() { return (typeof FOOD_DB !== 'undefined' && Array.isArray(FOOD_DB)) ? FOOD_DB : []; }
+function foodById(id) { return foodDB().find(f => f.id === id) || null; }
+function foodCats() { return (typeof FOOD_CATS !== 'undefined' && Array.isArray(FOOD_CATS)) ? FOOD_CATS : []; }
+
+/* 当前体重：优先 state.body 最近一条，无则目标里的手填体重，再无则 0 */
+/* 只认合法日期，避免导入的脏数据（如 'bad-date'）在字符串排序里冒充最新体重 */
+function dietBodyList() {
+  return (state.body || []).filter(b => Number(b.weight) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') && Number.isFinite(new Date(b.date + 'T00:00:00').getTime()));
+}
+function dietWeight() {
+  const list = dietBodyList();
+  if (list.length) {
+    const last = list.slice().sort((a, b) => a.date < b.date ? 1 : -1)[0];
+    return Number(last.weight);
+  }
+  const g = (state.diet && state.diet.goal) || {};
+  return Number(g.weight) || 0;
+}
+/* 目标是否可用：身高 / 年龄 / 体重齐全才算得出 TDEE */
+function dietGoalReady() {
+  const g = (state.diet && state.diet.goal) || {};
+  return Number(g.height) > 0 && Number(g.age) > 0 && dietWeight() > 0;
+}
+/* Mifflin-St Jeor：BMR = 10w + 6.25h - 5a + (男 +5 / 女 -161) */
+function dietBMR() {
+  const g = (state.diet && state.diet.goal) || {};
+  const w = dietWeight(), h = Number(g.height) || 0, a = Number(g.age) || 0;
+  if (!(w > 0 && h > 0 && a > 0)) return 0;
+  return 10 * w + 6.25 * h - 5 * a + (g.sex === 'f' ? -161 : 5);
+}
+function dietTDEE() {
+  const g = (state.diet && state.diet.goal) || {};
+  return Math.round(dietBMR() * (Number(g.activity) || 1.55));
+}
+/* 今日是训练日还是休息日：沿用现有 planForDate 的跳过 / 手动类型规则 */
+function dietIsTrainDay(dateStr) {
+  try {
+    const p = planForDate(dateStr || ui.today);
+    return !p.skipped && !p.rest;
+  } catch (e) { return false; }
+}
+/* 每日目标。训练日碳水略高、休息日压回；周热量按 rate（kg/周）微调，
+   蛋白 / 脂肪按体重固定，碳水吃满剩余热量。返回中位与估算标记无关。 */
+function dietTargets(dateStr) {
+  const g = Object.assign({}, DIET_GOAL_DEFAULT, (state.diet && state.diet.goal) || {});
+  const w = dietWeight();
+  const train = dietIsTrainDay(dateStr);
+  const tdee = dietTDEE();
+  if (!tdee) return null;
+  /* 每周 0.25 kg ≈ 每日 ±250 kcal（1 kg 脂肪≈7700 kcal，7700*0.25/7≈275） */
+  const rateKcal = Math.round((Number(g.rate) || 0) * 1100);
+  let kcal = tdee + rateKcal + (train ? 100 : -100);
+  const protein = Math.round(w * (Number(g.proteinPerKg) || 1.8));
+  const fat = Math.round(w * (Number(g.fatPerKg) || 0.9));
+  /* 蛋白 / 脂肪是硬指标：热量下限不能低于两者之和，否则碳水被挤成 0、显示的目标自相矛盾 */
+  kcal = Math.max(1200, Math.round(protein * 4 + fat * 9 + 100), Math.round(kcal));
+  const carb = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
+  return { kcal: kcal, p: protein, c: carb, f: fat, tdee: tdee, train: train, w: w };
+}
+
+/* 当天饮食日志：state.diet.log[date] = [{ id, fid, name, cat, grams, kcal, p, c, f, acc, err, meal, ts }] */
+function dietDay(dateStr) {
+  const log = (state.diet && state.diet.log) || {};
+  return Array.isArray(log[dateStr]) ? log[dateStr] : [];
+}
+function dietWriteDay(dateStr, arr) {
+  state.diet = state.diet || {};
+  state.diet.log = state.diet.log || {};
+  if (arr.length) state.diet.log[dateStr] = arr;
+  else delete state.diet.log[dateStr];
+  save();
+}
+/* 估算项热量区间：中位 ± err，下限不低于 0 */
+function dietEntryRange(e) {
+  const err = Number(e.err) || 0;
+  return err ? [Math.max(0, e.kcal - err), e.kcal + err] : [e.kcal, e.kcal];
+}
+function dietTotals(dateStr) {
+  const day = dietDay(dateStr);
+  const t = { kcal: 0, lo: 0, hi: 0, p: 0, c: 0, f: 0, n: day.length };
+  day.forEach(e => {
+    const r = dietEntryRange(e);
+    t.kcal += Number(e.kcal) || 0; t.lo += r[0]; t.hi += r[1];
+    t.p += Number(e.p) || 0; t.c += Number(e.c) || 0; t.f += Number(e.f) || 0;
+  });
+  t.kcal = Math.round(t.kcal); t.lo = Math.round(t.lo); t.hi = Math.round(t.hi);
+  t.p = Math.round(t.p); t.c = Math.round(t.c); t.f = Math.round(t.f);
+  return t;
+}
+/* 最近吃过：按 ts 倒序取不同食物 id */
+function dietRecent(limit) {
+  const all = [];
+  Object.keys((state.diet && state.diet.log) || {}).forEach(d => {
+    (state.diet.log[d] || []).forEach(e => all.push(e));
+  });
+  all.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const seen = {}, out = [];
+  all.forEach(e => { if (e.fid && !seen[e.fid]) { seen[e.fid] = 1; out.push(e.fid); } });
+  return out.slice(0, limit || 12);
+}
+/* 常吃组合：state.diet.favs = [{ id, name, items:[{fid,grams,meal}], ts }] */
+function dietFavs() { return (state.diet && Array.isArray(state.diet.favs)) ? state.diet.favs : []; }
+
+/* ---------- 记录 / 删除 ---------- */
+function dietAddEntry(fid, grams, meal, dateStr) {
+  const food = foodById(fid);
+  if (!food || !(Number(grams) > 0) || Number(grams) > 5000) return false;
+  const g = Number(grams);
+  const ratio = g / 100;
+  state.diet = state.diet || {};
+  const arr = dietDay(dateStr).slice();
+  arr.push({
+    id: 'de' + Date.now() + Math.random().toString(36).slice(2, 6),
+    fid: food.id, name: food.name, cat: food.cat, grams: g,
+    kcal: Math.round(food.kcal * ratio), p: Math.round(food.p * ratio * 10) / 10,
+    c: Math.round(food.c * ratio * 10) / 10, f: Math.round(food.f * ratio * 10) / 10,
+    acc: food.acc, err: Math.round(food.err * ratio), meal: meal, ts: Date.now(),
+  });
+  dietWriteDay(dateStr, arr);
+  return true;
+}
+function dietDelEntry(entryId, dateStr) {
+  const arr = dietDay(dateStr).filter(e => e.id !== entryId);
+  dietWriteDay(dateStr, arr);
+}
+
+/* ---------- 食物选择弹层（搜索 / 分类 / 常吃 / 最近；选份量后入账） ---------- */
+function openDietPicker(meal) {
+  ui.diet = ui.diet || {};
+  ui.diet.pickMeal = meal || 'breakfast';
+  ui.diet.query = '';
+  ui.diet.cat = '';
+  ui.diet.pickFid = '';
+  renderDietPicker();
+}
+function renderDietPicker() {
+  const d = ui.diet || {}, modal = document.getElementById('modal');
+  if (!modal) return;
+  if (d.pickFid) { renderDietPortion(); return; }
+  modal.innerHTML = '<div class="modal-mask" data-act="close-modal"></div><div class="modal-panel diet-picker">' +
+    '<div class="modal-head"><b>记一笔 · ' + esc((DIET_MEALS.find(m => m.key === d.pickMeal) || {}).name || '') + '</b>' +
+    '<div class="modal-head-r"><button type="button" class="modal-x" data-act="close-modal" aria-label="关闭">✕</button></div></div>' +
+    '<div class="form">' +
+    '<input class="exf" id="dietSearch" type="search" placeholder="搜食物名，如 米饭 / 鸡胸 / 拿铁" value="' + esc(d.query || '') + '">' +
+    '<div id="dietResult"></div>' +
+    '<p class="form-note">「估」= 外卖 / 家常菜没有可靠每 100g 数据，给的是区间中位，只作参考。称重食材更准。</p>' +
+    '</div></div>';
+  renderDietList();
+  modal.classList.remove('hidden');
+  const inp = document.getElementById('dietSearch');
+  if (inp) inp.focus();
+}
+/* 只刷新结果区。若重建 input 本身，iOS 中文输入法会在每次 input 事件丢掉拼音组合状态。 */
+function renderDietList() {
+  const d = ui.diet || {}, box = document.getElementById('dietResult');
+  if (!box) return;
+  const q = String(d.query || '').trim().toLowerCase();
+  const cats = foodCats();
+  let list = foodDB();
+  if (d.cat) list = list.filter(f => f.cat === d.cat);
+  if (q) list = list.filter(f => f.name.toLowerCase().indexOf(q) >= 0 || f.id.toLowerCase().indexOf(q) >= 0);
+  if (!d.cat && !q) {
+    /* 默认显示：最近吃过优先，其余按库顺序，控制首屏长度 */
+    const recentIds = dietRecent(10);
+    const rset = {}; recentIds.forEach(id => rset[id] = 1);
+    list = list.slice().sort((a, b) => (rset[b.id] ? 1 : 0) - (rset[a.id] ? 1 : 0));
+  }
+  const recent = dietRecent(10), favs = dietFavs();
+  const catChips = '<div class="diet-chips">' +
+    '<button type="button" class="diet-chip' + (!d.cat ? ' on' : '') + '" data-act="diet-cat" data-cat="">全部</button>' +
+    cats.map(c => '<button type="button" class="diet-chip' + (d.cat === c ? ' on' : '') + '" data-act="diet-cat" data-cat="' + esc(c) + '">' + esc(c) + '</button>').join('') + '</div>';
+  const rows = list.length ? list.slice(0, 200).map(f =>
+    '<button type="button" class="diet-food" data-act="diet-pick" data-fid="' + esc(f.id) + '">' +
+    '<span class="df-n">' + esc(f.name) + (f.acc === 'e' ? '<i class="df-est">估</i>' : '') + '</span>' +
+    '<span class="df-k">' + (f.acc === 'e' ? Math.max(0, f.kcal - f.err) + '–' + (f.kcal + f.err) : f.kcal) + ' kcal/100g</span></button>').join('')
+    : '<div class="empty" style="padding:16px 0">没找到。换个词，或点分类浏览。</div>';
+  let favHtml = '';
+  if (favs.length && !q && !d.cat) {
+    favHtml = '<div class="section-title" style="margin-top:12px">常吃组合 · 一键整餐</div><div class="diet-chips">' +
+      favs.map(fv => '<span class="diet-fav"><button type="button" class="diet-chip" data-act="diet-fav-use" data-id="' + esc(fv.id) + '">▶ ' + esc(fv.name) + '</button>' +
+        '<button type="button" class="diet-fav-x" data-act="diet-fav-del" data-id="' + esc(fv.id) + '" aria-label="删除">✕</button></span>').join('') + '</div>';
+  }
+  const recentHtml = (recent.length && !q && !d.cat)
+    ? '<div class="section-title" style="margin-top:12px">最近吃过</div><div class="diet-chips">' + recent.map(id => {
+        const f = foodById(id); return f ? '<button type="button" class="diet-chip" data-act="diet-pick" data-fid="' + esc(f.id) + '">' + esc(f.name) + '</button>' : '';
+      }).join('') + '</div>' : '';
+  box.innerHTML = catChips + favHtml + recentHtml +
+    '<div class="section-title" style="margin-top:12px">食物库 · ' + list.length + ' 项</div>' +
+    '<div class="diet-foodlist">' + rows + '</div>';
+}
+
+function renderDietPortion() {
+  const d = ui.diet || {}, modal = document.getElementById('modal');
+  const f = foodById(d.pickFid);
+  if (!f || !modal) { renderDietPicker(); return; }
+  const gramsOptions = f.portions || [{ label: '100g', g: 100 }];
+  const chosen = Number(d.grams) || gramsOptions[0].g;
+  const ratio = chosen / 100;
+  const kc = Math.round(f.kcal * ratio);
+  const kcalTxt = f.acc === 'e' ? '约 ' + Math.max(0, kc - Math.round(f.err * ratio)) + '–' + (kc + Math.round(f.err * ratio)) : String(kc);
+  modal.innerHTML = '<div class="modal-mask" data-act="diet-back-pick"></div><div class="modal-panel">' +
+    '<div class="modal-head"><b>' + esc(f.name) + '</b><div class="modal-head-r"><button type="button" class="modal-x" data-act="diet-back-pick" aria-label="返回">✕</button></div></div>' +
+    '<div class="form">' +
+    '<div class="form-tip">每 100g：' + f.kcal + ' kcal · 蛋白 ' + f.p + 'g · 碳水 ' + f.c + 'g · 脂肪 ' + f.f + 'g' + (f.acc === 'e' ? '（估算 ±' + f.err + '）' : '（称重准确）') + '</div>' +
+    '<div class="section-title">选份量</div><div class="diet-chips">' + gramsOptions.map(o =>
+      '<button type="button" class="diet-chip' + (chosen === o.g ? ' on' : '') + '" data-act="diet-grams" data-g="' + o.g + '">' + esc(o.label) + ' · ' + o.g + 'g</button>').join('') + '</div>' +
+    fld('自定义克数（g）', 'dietGram', String(chosen), 'number', 'inputmode="decimal" min="1" max="5000" step="1"') +
+    '<div class="diet-total-box"><b>' + kcalTxt + ' kcal</b><span>蛋白 ' + fmtKg(f.p * ratio) + 'g · 碳水 ' + fmtKg(f.c * ratio) + 'g · 脂肪 ' + fmtKg(f.f * ratio) + 'g</span></div>' +
+    '<div class="form-actions"><button type="button" class="fbtn" data-act="diet-back-pick">返回</button>' +
+    '<button type="button" class="fbtn primary" data-act="diet-confirm">加入' + esc((DIET_MEALS.find(m => m.key === d.pickMeal) || {}).name || '') + '</button></div>' +
+    '</div></div>';
+  modal.classList.remove('hidden');
+}
+
+/* ---------- 目标设置弹层 ---------- */
+function openDietGoalForm() {
+  const g = Object.assign({}, DIET_GOAL_DEFAULT, (state.diet && state.diet.goal) || {});
+  const modal = document.getElementById('modal');
+  modal.innerHTML = '<div class="modal-mask" data-act="close-modal"></div><div class="modal-panel">' +
+    '<div class="modal-head"><b>营养目标</b><div class="modal-head-r"><button type="button" class="modal-x" data-act="close-modal" aria-label="关闭">✕</button></div></div>' +
+    '<div class="form">' +
+    '<div class="form-tip">用 Mifflin-St Jeor 估算静息代谢，再乘活动系数得 TDEE。体重优先取「身体」页最近一次记录，没记过可在下面手填。</div>' +
+    '<div class="fld-row">' +
+    '<label class="fld"><span>性别</span><select class="exf" data-f="sex"><option value="m"' + (g.sex === 'm' ? ' selected' : '') + '>男</option><option value="f"' + (g.sex === 'f' ? ' selected' : '') + '>女</option></select></label>' +
+    fld('年龄', 'age', g.age, 'number', 'inputmode="numeric" min="14" max="100"') +
+    '</div>' +
+    '<div class="fld-row">' +
+    fld('身高（cm）', 'height', g.height, 'number', 'inputmode="decimal" min="120" max="230"') +
+    fld('体重（kg，可选）', 'weight', g.weight || '', 'number', 'inputmode="decimal" min="30" max="250"') +
+    '</div>' +
+    '<label class="fld"><span>活动水平</span><select class="exf" data-f="activity">' + DIET_ACTIVITY.map(a =>
+      '<option value="' + a.v + '"' + (Number(g.activity) === a.v ? ' selected' : '') + '>' + a.label + '</option>').join('') + '</select></label>' +
+    '<div class="fld-row">' +
+    fld('蛋白 g/kg', 'proteinPerKg', g.proteinPerKg, 'number', 'inputmode="decimal" min="1" max="3" step="0.1"') +
+    fld('脂肪 g/kg', 'fatPerKg', g.fatPerKg, 'number', 'inputmode="decimal" min="0.4" max="2" step="0.1"') +
+    '</div>' +
+    '<label class="fld"><span>每周体重变化（kg，增肌 0.2—0.4，减脂填负数）</span>' +
+    '<input class="exf" data-f="rate" type="number" inputmode="decimal" min="-1" max="1" step="0.05" value="' + esc(g.rate) + '"></label>' +
+    '<div class="form-actions"><button type="button" class="fbtn" data-act="close-modal">取消</button>' +
+    '<button type="button" class="fbtn primary" data-act="diet-goal-save">保存</button></div>' +
+    '</div></div>';
+  modal.classList.remove('hidden');
+}
+function saveDietGoal() {
+  const modal = document.getElementById('modal');
+  const get = f => { const el = modal.querySelector('[data-f="' + f + '"]'); return el ? String(el.value).trim() : ''; };
+  const wRaw = get('weight');
+  state.diet = state.diet || {};
+  state.diet.goal = {
+    sex: get('sex') === 'f' ? 'f' : 'm',
+    age: Math.max(14, Math.min(100, Number(get('age')) || 30)),
+    height: Math.max(120, Math.min(230, Number(get('height')) || 0)),
+    /* 体重是可选字段：留空必须是 0（回退到身体页记录），不能默认 30kg 把 TDEE 算废 */
+    weight: wRaw && Number.isFinite(Number(wRaw)) && Number(wRaw) > 0 ? Math.max(30, Math.min(250, Number(wRaw))) : 0,
+    activity: Number(get('activity')) || 1.55,
+    proteinPerKg: Math.max(1, Math.min(3, Number(get('proteinPerKg')) || 1.8)),
+    fatPerKg: Math.max(0.4, Math.min(2, Number(get('fatPerKg')) || 0.9)),
+    rate: Math.max(-1, Math.min(1, Number(get('rate')) || 0)),
+  };
+  state.diet.goalSet = true;
+  save(); closeModal(); render();
+  toast('营养目标已保存');
+}
+
+/* ---------- 存为常吃组合 ---------- */
+function openDietFavForm(meal) {
+  const day = dietDay(ui.today).filter(e => e.meal === meal);
+  if (!day.length) { toast('这一餐还没有食物'); return; }
+  const nameDefault = (DIET_MEALS.find(m => m.key === meal) || {}).name || '常吃';
+  const modal = document.getElementById('modal');
+  modal.innerHTML = '<div class="modal-mask" data-act="close-modal"></div><div class="modal-panel">' +
+    '<div class="modal-head"><b>存为常吃组合</b><div class="modal-head-r"><button type="button" class="modal-x" data-act="close-modal" aria-label="关闭">✕</button></div></div>' +
+    '<div class="form"><div class="form-tip">把这一餐的 ' + day.length + ' 项存成一组，以后一键整餐入账。</div>' +
+    fld('组合名称', 'favName', nameDefault, 'text', 'maxlength="20"') +
+    '<div class="form-actions"><button type="button" class="fbtn" data-act="close-modal">取消</button>' +
+    '<button type="button" class="fbtn primary" data-act="diet-fav-save" data-meal="' + esc(meal) + '">保存</button></div></div></div>';
+  modal.classList.remove('hidden');
+}
+function saveDietFav(meal) {
+  const modal = document.getElementById('modal');
+  const el = modal.querySelector('[data-f="favName"]');
+  const name = el ? String(el.value).trim() : '';
+  const items = dietDay(ui.today).filter(e => e.meal === meal).map(e => ({ fid: e.fid, grams: e.grams, meal: e.meal }));
+  if (!items.length) { toast('这一餐还没有食物'); return; }
+  state.diet = state.diet || {};
+  state.diet.favs = dietFavs();
+  state.diet.favs.push({ id: 'fv' + Date.now(), name: name || '常吃组合', items: items, ts: Date.now() });
+  save(); closeModal(); render();
+  toast('已存为常吃组合');
+}
+function useDietFav(id) {
+  const fv = dietFavs().find(f => f.id === id);
+  if (!fv) return;
+  const total = (fv.items || []).length;
+  let n = 0;
+  (fv.items || []).forEach(it => { if (dietAddEntry(it.fid, it.grams, it.meal || 'snack', ui.today)) n++; });
+  ui.diet = ui.diet || {}; ui.diet.pickFid = '';
+  renderDietList(); render();
+  /* 食物库升级后旧组合可能引用失效 id：不能静默跳过还报「已记入」 */
+  toast(n === total ? '已记入「' + fv.name + '」'
+    : n ? '只记入 ' + n + '/' + total + ' 项，其余食物已失效，请重存组合'
+      : '组合里的食物已失效，请重存一次');
+}
+function delDietFav(id) {
+  state.diet.favs = dietFavs().filter(f => f.id !== id);
+  save(); renderDietList(); render();
+}
+
+/* ---------- 体重 7 日移动平均曲线（复用 state.body） ---------- */
+function dietWeightMA() {
+  const list = dietBodyList().slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  if (!list.length) return { pts: [], list: [], labels: '', min: 0, max: 0, weeks: [] };
+  const vals = list.map(b => Number(b.weight));
+  const ma = vals.map((_, i) => {
+    const d = new Date(list[i].date + 'T00:00:00');
+    let sum = 0, n = 0;
+    list.forEach((b, j) => {
+      const bd = new Date(b.date + 'T00:00:00');
+      const days = (d - bd) / 86400000;
+      if (days >= 0 && days <= 6) { sum += Number(b.weight); n++; }
+    });
+    return n ? sum / n : vals[i];
+  });
+  /* 每周一个采样点：取每个自然周最后一条移动均值 */
+  const weeks = [];
+  let cur = '';
+  ma.forEach((v, i) => {
+    const wk = mondayOf(new Date(list[i].date + 'T00:00:00'));
+    if (wk !== cur) { cur = wk; weeks.push({ date: list[i].date, v: v }); }
+    else weeks[weeks.length - 1] = { date: list[i].date, v: v };
+  });
+  return { pts: ma, list: list, weeks: weeks, min: Math.min.apply(null, ma), max: Math.max.apply(null, ma) };
+}
+function dietWeightChartHTML() {
+  const info = dietWeightMA();
+  if (info.list.length < 2) return '<div class="empty" style="padding:18px 0">记录 2 次以上体重后，这里画出 7 日移动平均曲线。</div>';
+  const W = 320, H = 130, pad = 24;
+  const vals = info.pts;
+  const min = info.min - 0.4, max = info.max + 0.4, span = (max - min) || 1;
+  const xs = vals.map((_, i) => pad + i * (W - 2 * pad) / Math.max(1, vals.length - 1));
+  const ys = vals.map(v => H - pad - (v - min) / span * (H - 2 * pad));
+  const pts = xs.map((x, i) => x.toFixed(1) + ',' + ys[i].toFixed(1)).join(' ');
+  const area = 'M' + xs[0].toFixed(1) + ',' + (H - pad) + ' L' + pts.replace(/ /g, ' L') + ' L' + xs[xs.length - 1].toFixed(1) + ',' + (H - pad) + ' Z';
+  const dots = xs.map((x, i) => '<circle cx="' + x.toFixed(1) + '" cy="' + ys[i].toFixed(1) + '" r="2.4" fill="#3B6FE0"/>').join('');
+  let rateTxt = '';
+  if (info.weeks.length >= 2) {
+    const lastW = info.weeks[info.weeks.length - 1], prevW = info.weeks[info.weeks.length - 2];
+    /* 中间断记几周时，两个采样点的差不是「一周」的变化；按实际天数折算，否则会误判增 / 减脂速率 */
+    const days = (new Date(lastW.date + 'T00:00:00') - new Date(prevW.date + 'T00:00:00')) / 86400000;
+    const gap = Math.max(1, days / 7);
+    const delta = Math.round((lastW.v - prevW.v) / gap * 100) / 100;
+    const g = Object.assign({}, DIET_GOAL_DEFAULT, (state.diet && state.diet.goal) || {});
+    const target = Number(g.rate) || 0;
+    const ok = Math.abs(delta - target) <= 0.15;
+    rateTxt = '<div class="diet-rate">周均 <b>' + (delta > 0 ? '+' : '') + fmtKg(delta) + ' kg</b>' +
+      (gap > 1.5 ? '（跨 ' + fmtKg(Math.round(gap * 10) / 10) + ' 周）' : '') +
+      ' · 目标 ' + (target > 0 ? '+' : '') + fmtKg(target) + ' kg/周 · ' +
+      (ok ? '<span class="ok">在轨</span>' : '<span class="warn">' + (delta > target ? '偏快，考虑减 100 kcal' : '偏慢，考虑加 100 kcal') + '</span>') + '</div>';
+  }
+  return '<div class="stat-card"><div class="stat-h">体重趋势 · 7 日移动平均</div>' +
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '">' +
+    '<path d="' + area + '" fill="rgba(59,111,224,0.12)"/><polyline points="' + pts + '" fill="none" stroke="#3B6FE0" stroke-width="2"/>' + dots +
+    '<text x="' + pad + '" y="12" font-size="9" fill="#8A94A6">' + info.list[0].date.slice(5) + '</text>' +
+    '<text x="' + (W - pad) + '" y="12" font-size="9" fill="#8A94A6" text-anchor="end">' + info.list[info.list.length - 1].date.slice(5) + '</text></svg></div>' + rateTxt;
+}
+
+/* ---------- 饮食页主体 ---------- */
+function dietHTML() {
+  const dateStr = ui.today;
+  const day = dietDay(dateStr);
+  const tot = dietTotals(dateStr);
+  const target = dietTargets(dateStr);
+  const train = dietIsTrainDay(dateStr);
+  const g = Object.assign({}, DIET_GOAL_DEFAULT, (state.diet && state.diet.goal) || {});
+  const ready = dietGoalReady();
+
+  /* 目标卡 */
+  let goalHTML;
+  if (!ready) {
+    const saved = !!(state.diet && state.diet.goalSet);
+    goalHTML = '<div class="card"><div class="diet-goal-t">' + (saved ? '目标还缺体重' : '还没设营养目标') + '</div>' +
+      '<div class="form-tip">' + (saved
+        ? '身高 / 年龄已保存，但还没有可用体重。去「身体」页记一次晨重，或在目标里补填体重，就能算出 TDEE。'
+        : '填身高 / 年龄 / 活动水平，就能按体重算 TDEE 和每天该吃多少。体重会优先取「身体」页的最近记录。') + '</div>' +
+      '<button type="button" class="btn" data-act="diet-goal" style="margin-top:10px">' + (saved ? '补填体重' : '设置营养目标') + '</button></div>';
+  } else {
+    goalHTML = '<div class="card"><div class="diet-goal-t">今日目标 <span class="diet-tag ' + (train ? 'train' : 'rest') + '">' + (train ? '训练日 · 碳水偏高' : '休息日 · 碳水压回') + '</span>' +
+      '<button type="button" class="hbtn" data-act="diet-goal" style="float:right">改目标</button></div>' +
+      '<div class="diet-targets"><div><b>' + target.kcal + '</b><span>kcal</span></div>' +
+      '<div><b>' + target.p + '</b><span>蛋白 g</span></div>' +
+      '<div><b>' + target.c + '</b><span>碳水 g</span></div>' +
+      '<div><b>' + target.f + '</b><span>脂肪 g</span></div></div>' +
+      '<div class="form-tip">TDEE ' + target.tdee + ' kcal · 体重 ' + fmtKg(target.w) + ' kg · 蛋白 ' + g.proteinPerKg + ' g/kg、脂肪 ' + g.fatPerKg + ' g/kg、每周 ' + (g.rate > 0 ? '+' : '') + g.rate + ' kg</div></div>';
+  }
+
+  /* 累计进度 */
+  const kcalTarget = target ? target.kcal : 0;
+  const pct = kcalTarget ? Math.min(100, Math.round(tot.kcal / kcalTarget * 100)) : 0;
+  const kcalTxt = tot.hi > tot.lo ? (tot.lo + '–' + tot.hi) : String(tot.kcal);
+  const macroBar = target ? '<div class="diet-macros">' +
+    '<span>蛋白 ' + tot.p + ' / ' + target.p + ' g</span><span>碳水 ' + tot.c + ' / ' + target.c + ' g</span><span>脂肪 ' + tot.f + ' / ' + target.f + ' g</span></div>' : '';
+  const totalHTML = '<div class="card diet-summary"><div class="diet-goal-t">今日累计 <span class="diet-kcal">' + kcalTxt + ' kcal</span></div>' +
+    (kcalTarget ? '<div class="bar"><i style="width:' + pct + '%"></i></div><div class="diet-pct">' + pct + '% / 目标 ' + kcalTarget + ' kcal</div>' : '') +
+    macroBar + (tot.n ? '' : '<div class="form-tip">还没有记录。点下面任一餐的「＋」开始。</div>') + '</div>';
+
+  /* 四餐 */
+  const mealsHTML = DIET_MEALS.map(m => {
+    const items = day.filter(e => e.meal === m.key);
+    const mKcal = items.reduce((n, e) => n + (Number(e.kcal) || 0), 0);
+    const mErr = items.reduce((n, e) => n + (Number(e.err) || 0), 0);
+    const mTxt = mErr ? (Math.max(0, mKcal - mErr) + '–' + (mKcal + mErr)) : String(Math.round(mKcal));
+    const rows = items.length ? items.map(e => {
+      const r = dietEntryRange(e);
+      const ek = r[0] !== r[1] ? (r[0] + '–' + r[1]) : e.kcal;
+      return '<div class="hrow"><span class="hn">' + esc(e.name) + ' <small>' + e.grams + 'g' + (e.acc === 'e' ? ' · 估' : '') + '</small></span>' +
+        '<span class="hv">' + ek + ' kcal <button type="button" class="hbtn" data-act="diet-del" data-id="' + esc(e.id) + '">删</button></span></div>';
+    }).join('') : '<div class="diet-empty-meal">未记录</div>';
+    return '<div class="card diet-meal"><div class="diet-goal-t">' + m.name + ' <span class="diet-meal-kcal">' + mTxt + ' kcal</span>' +
+      '<span class="diet-meal-actions"><button type="button" class="hbtn" data-act="diet-picker" data-meal="' + m.key + '">＋ 加食物</button>' +
+      '<button type="button" class="hbtn" data-act="diet-fav-form" data-meal="' + m.key + '">存常吃</button></span></div>' + rows + '</div>';
+  }).join('');
+
+  /* 体重趋势 */
+  const weightHTML = '<div class="section-title">体重趋势（与训练 / 热量对照看）</div>' + dietWeightChartHTML() +
+    '<button type="button" class="hbtn" data-act="open-more" data-tab="body" style="margin-bottom:8px">去「身体」页记录晨重 ›</button>';
+
+  const note = '<p class="form-note">估算类只给区间，不假装精确；称重食材 + 固定份量才准。拍照识别误差太大，不做。目标是参考起点，按 2—3 周体重趋势微调。</p>';
+  return '<div class="section-title">饮食 · ' + dateLabel(dateStr) + '</div>' + goalHTML + totalHTML +
+    '<div class="section-title">今日四餐</div>' + mealsHTML + weightHTML + note;
 }
 
 function dayTabsHTML() {
@@ -2284,7 +3166,7 @@ function applySuggestedWeight(exKey) {
   if (!canFillSuggested(exKey)) { toast('本次已有完成组，建议重量留给下次训练'); return; }
   const ex = effEx(base);
   const pg = progression(ex, ui.today);
-  if (pg.level !== 'up' || !pg.next) return;
+  if ((pg.level !== 'up' && pg.level !== 'down') || !pg.next) return;
   state.drafts = state.drafts || {};
   const card = document.querySelector ? document.querySelector('.card[data-ex="' + exKey + '"]') : null;
   let n = 0;
@@ -2347,7 +3229,7 @@ function cardHTML(ex, i) {
     esc(ex.name) + '<span class="pen">✎</span></button>' +
     '<span class="tag">' + esc(ex.kind) + '</span>' + (custom ? '<span class="tag edited">已自定义</span>' : '') +
     (swapped ? '<span class="tag swapped">已换器械</span>' : '') +
-    (supersetPartner(ex.key) ? '<span class="tag pair">↔ 交替：' + esc((findEx(supersetPartner(ex.key)) || { name: '?' }).name) + '</span>' : '') +
+    (supersetPartner(ex.key) ? '<span class="tag pair" role="button" tabindex="0" data-act="pair-jump" data-ex="' + esc(supersetPartner(ex.key)) + '" title="超级组：做完这个一组立刻去做对方，成对完成再休息。点击跳到配对动作">↔ ' + supersetSelfLabel(ex.key) + ' 交替：' + esc((findEx(supersetPartner(ex.key)) || { name: '?' }).name) + '</span>' : '') +
     '</div>' +
     '<button type="button" class="swap-btn" data-act="open-swap" data-ex="' + ex.key + '" title="从器械库一键替换动作">⇄<span>替换</span></button>' +
     (isBarbell(ex) ? '<button type="button" class="plate-btn" data-act="plate" data-ex="' + ex.key + '" title="算这个动作要怎么上杠铃片">🏋<span>配片</span></button>' : '') +
@@ -2362,9 +3244,11 @@ function cardHTML(ex, i) {
     '<div class="noteline">备注<input class="exnote" data-exnote="' + ex.key + '" placeholder="私人提示，如：左肩下沉" value="' + esc((state.notes && state.notes[ex.key]) || '') + '"></div>' +
     '<div class="last"><b>↺ 上次</b> ' + esc(lastText) + '</div>' +
     prHTML(ex) +
-    (pg.level === 'up' && pg.next ? '<div class="weight-up">⬆ 本次建议' + (pg.next.assisted ? '减少助力到' : (pg.next.bodyweight ? '加重（负重）到' : '加重到')) + ' <b>' + esc(fmtKg(pg.next.to)) + ' kg</b><span>上次 ' + esc(fmtKg(pg.next.from)) + ' → ' + (pg.next.assisted ? '−' : '+') + esc(fmtKg(Math.abs(pg.next.inc))) + '（约 ' + (pg.next.assisted ? '−' : '+') + pg.next.pct + '%），次数回落到 ' + esc(ex.repMin) + '—' + esc(ex.repMax) + '</span>' +
+    (pg.level === 'up' && pg.next ? '<div class="weight-up">⬆ 本次建议' + (pg.next.assisted ? '减少助力到' : (pg.next.bodyweight ? '加重（负重）到' : '加重到')) + ' <b>' + esc(fmtKg(pg.next.to)) + ' kg</b><span>上次 ' + esc(fmtKg(pg.next.from)) + ' → ' + (pg.next.assisted ? '−' : '+') + esc(fmtKg(Math.abs(pg.next.inc))) + '（约 ' + (pg.next.assisted ? '−' : '+') + pg.next.pct + '%）' + (pg.next.hint ? ' · ' + esc(pg.next.hint) : '') + '，次数回落到 ' + esc(ex.repMin) + '—' + esc(ex.repMax) + '</span>' +
       (function () { const n = pendingSetCount(ex); return (n && canFillSuggested(ex.key)) ? '<button type="button" class="use-suggest" data-act="use-suggest" data-ex="' + ex.key + '">⬆ 用建议 ' + esc(fmtKg(pg.next.to)) + ' kg · 填入未完成 ' + n + ' 组</button>' : ''; })() + '</div>' : '') +
-    (pg.level !== 'up' ? (function () { const pl = plateauInfo(ex, ui.today); return pl ? '<div class="plateau">⚠ 该动作已 ' + pl.stuck + ' 次训练（约 ' + pl.weeks + ' 周）没创新重量（最佳 ' + fmtKg(pl.best) + ' kg）。可换同类动作 / 加 1 组容量 / 检查恢复与睡眠</div>' : ''; })() : '') +
+    (pg.level === 'down' && pg.next ? '<div class="weight-down">⬇ 本次建议降重到 <b>' + esc(fmtKg(pg.next.to)) + ' kg</b><span>上次 ' + esc(fmtKg(pg.next.from)) + ' → −' + esc(fmtKg(Math.abs(pg.next.inc))) + '（约 −' + pg.next.pct + '%）' + (pg.next.hint ? ' · ' + esc(pg.next.hint) : '') + '，先把次数做回 ' + esc(ex.repMin) + '—' + esc(ex.repMax) + ' 次</span>' +
+      (function () { const n = pendingSetCount(ex); return (n && canFillSuggested(ex.key)) ? '<button type="button" class="use-suggest" data-act="use-suggest" data-ex="' + ex.key + '">⬇ 用建议 ' + esc(fmtKg(pg.next.to)) + ' kg · 填入未完成 ' + n + ' 组</button>' : ''; })() + '</div>' : '') +
+    (pg.level !== 'up' && pg.level !== 'down' ? (function () { const pl = plateauInfo(ex, ui.today); return pl ? '<div class="plateau">⚠ 该动作已 ' + pl.stuck + ' 次训练（约 ' + pl.weeks + ' 周）估算 1RM 没再提高（当前最佳 ' + fmtKg(pl.best) + ' kg）。可换同类动作 / 加 1 组容量 / 检查恢复与睡眠</div>' : ''; })() : '') +
     trendSVG(ex) +
     '<div class="hint ' + pg.level + '">' + esc(pg.text) + '</div>' +
     '<div class="sets">' + rows.join('') +
@@ -2393,7 +3277,7 @@ function todayHTML() {
   const warm = day.rest ? '' : warmupBlockHTML(day.key, exList);
   const sess = sessionHTML(fin);
   return (fin ? doneSummaryHTML() : '') + top + recCheckInHTML() +
-    (recoveryDeloadBannerHTML() || deloadBannerHTML()) + coachBriefHTML() + warm + html + sess;
+    (recoveryDeloadBannerHTML() || blockBannerHTML()) + coachBriefHTML() + warm + html + sess;
 }
 /* 今日训练类型一键切换：推 / 拉 / 腿 / 上 / 下 / 休 / 自动。
    按当前查看日（默认即真实今天）的真实日期存到 state.typeOverride。 */
@@ -2644,11 +3528,11 @@ function reportHTML(startStr, endStr, opts) {
   const card = Object.keys(state.cardio || {}).map(k => state.cardio[k]).filter(r => r && r.date >= s0 && r.date <= s1);
   const lines = dates.map(d => reportDayHTML(d, o.detail)).join('');
   return '<div class="report"><h1>训练记录</h1>' +
-    '<div class="rsub">' + dateLabel(s0) + ' – ' + dateLabel(s1) + ' · 训练日记 · ' + (o.detail ? '完整组次明细' : '紧凑版') + '</div>' +
+    '<div class="rsub">' + dateLabel(s0) + ' – ' + dateLabel(s1) + ' · 无限进步 · ' + (o.detail ? '完整组次明细' : '紧凑版') + '</div>' +
     reportWeekStatsHTML(dates, recs, card, '区间') +
     '<div class="section-title">每日明细</div>' + lines +
     (o.stats ? statsHTML() : '') +
-    '<div class="rfoot">由「训练日记」本地生成 · ' + esc(ui.today) + ' · 数据仅保存在本机，未上传云端</div></div>';
+    '<div class="rfoot">由「无限进步」本地生成 · ' + esc(ui.today) + ' · 数据仅保存在本机，未上传云端</div></div>';
 }
 function weeklyReportHTML(anchorStr, opts) {
   const dates = weekDatesFor(anchorStr || ui.today);
@@ -2658,11 +3542,11 @@ function weeklyReportHTML(anchorStr, opts) {
   const card = Object.keys(state.cardio || {}).map(k => state.cardio[k]).filter(r => r && r.date >= s0 && r.date <= s1);
   const lines = dates.map(d => reportDayHTML(d, o.detail)).join('');
   return '<div class="report"><h1>训练周报</h1>' +
-    '<div class="rsub">' + dateLabel(s0) + ' – ' + dateLabel(s1) + ' · 训练日记 · ' + (o.detail ? '完整组次明细' : '紧凑版') + '</div>' +
+    '<div class="rsub">' + dateLabel(s0) + ' – ' + dateLabel(s1) + ' · 无限进步 · ' + (o.detail ? '完整组次明细' : '紧凑版') + '</div>' +
     reportWeekStatsHTML(dates, recs, card, '本周') +
     '<div class="section-title">每日明细</div>' + lines +
     (o.stats ? statsHTML() : '') +
-    '<div class="rfoot">由「训练日记」本地生成 · ' + esc(ui.today) + ' · 数据仅保存在本机，未上传云端</div></div>';
+    '<div class="rfoot">由「无限进步」本地生成 · ' + esc(ui.today) + ' · 数据仅保存在本机，未上传云端</div></div>';
 }
 function exportPDF(anchorStr, opts) {
   const area = document.getElementById('printArea');
@@ -2849,6 +3733,38 @@ function historyHTML() {
   }).join('');
 }
 
+/* 小肌群覆盖汇总：把散落在各训练日末尾的手臂 / 核心 / 小腿直接组挑出来集中显示。
+   这些动作名不带「手臂」「核心」字样、又都在每天最后一个，用户翻计划时很容易以为没安排。
+   pattern 优先级最高；被一键替换改过名的动作，靠 pattern 仍能认出它属于哪个肌群。 */
+const MINOR_MUSCLE_MAP = [
+  { label: '肱二头', pats: ['肘屈'] },
+  { label: '肱三头', pats: ['肘伸'] },
+  { label: '核心', pats: ['躯干屈', '抗伸展', '抗旋转', '抗侧屈'] },
+  { label: '小腿', pats: ['踝伸'] },
+];
+function weekMinorMuscleHTML() {
+  const src = planSource(state.settings.mode || 'ppl');
+  const rows = MINOR_MUSCLE_MAP.map(function (m) {
+    const hits = [];
+    (src.ex || []).forEach(function (e) {
+      const pe = effEx(e);
+      if (m.pats.indexOf(pe.pattern) < 0) return;
+      const d = src.days.find(function (x) { return x.key === e.day; });
+      hits.push({ name: pe.name || e.name, sets: Number(pe.sets) || 0, day: d ? d.label : e.day });
+    });
+    const sets = hits.reduce(function (a, b) { return a + b.sets; }, 0);
+    return { label: m.label, sets: sets, hits: hits };
+  });
+  const body = rows.map(function (r) {
+    const detail = r.hits.length
+      ? r.hits.map(function (h) { return esc(h.day) + ' ' + esc(h.name) + ' ' + h.sets + '组'; }).join(' · ')
+      : '<span class="mm-none">未安排直接组</span>';
+    return '<div class="mm-row"><div class="mm-top"><b>' + r.label + '</b><span class="mm-sets">' + r.sets + ' 组/周</span></div><div class="mm-detail">' + detail + '</div></div>';
+  }).join('');
+  return '<div class="section-title">小肌群直接组 · 每周覆盖</div>' +
+    '<div class="note">主项的推 / 拉 / 蹲只间接带到这些肌群；下面列的是<b>单独安排的直按组</b>。小肌群每周 2—5 组即有效，不必凑大肌群的 10—14 组。</div>' +
+    '<div class="minor-muscle">' + body + '</div>';
+}
 function weekPlanTotalSets() {
   let total = 0;
   WEEK_ORDER.forEach(wk => {
@@ -2869,7 +3785,7 @@ function advisorHTML() {
   const done = weekDoneSets();
   const pct = plan ? Math.round(done / plan * 100) : 0;
   let verdict, advice, cls;
-  if (pct >= 90) { verdict = '达成率高'; cls = 'up'; advice = '本周完成度 ' + pct + '%，容量足够。下周可小幅进阶：体重 +2.5%—5%（仍留 1—2 次余力），或每个动作 +1 组；优先加重量。'; }
+  if (pct >= 90) { verdict = '达成率高'; cls = 'up'; advice = '本周完成度 ' + pct + '%，容量足够。下周可小幅进阶：按器械加一档（杠铃 5 kg、哑铃 2.5 kg，仍留 1—2 次余力），或每个动作 +1 组；优先加重量。'; }
   else if (pct >= 60) { verdict = '基本达成'; cls = 'hold'; advice = '本周完成度 ' + pct + '%。先别急着加量，把落下的动作补回来（见下方），完成率稳到 90% 以上再加。'; }
   else { verdict = '完成偏低'; cls = 'neutral'; advice = '本周完成度仅 ' + pct + '%。别加量，先把频率稳住：挪到更顺手的时段，或把一次训练拆短；习惯比容量重要。'; }
   const ws = weekDates(), s0 = todayStr(ws[0]), s1 = todayStr(ws[6]);
@@ -2900,8 +3816,8 @@ function advisorHTML() {
       } else {
         const ws2 = recent.map(r => Number(r.weight) || 0);
         if (ws2.every(w => w === ws2[0])) {
-          if (avgRir !== null && avgRir >= 3) stale.push(e.name + '（重量没动且 RIR 偏高，试试 +2.5% 或加重）');
-          else stale.push(e.name + '（重量许久没动，试试换同类器械或 +2.5%）');
+          if (avgRir !== null && avgRir >= 3) stale.push(e.name + '（重量没动且 RIR 偏高，可以加一档）');
+          else stale.push(e.name + '（重量许久没动，试试加一档或换同类器械）');
         }
       }
     }
@@ -2910,7 +3826,7 @@ function advisorHTML() {
   const plateau = [];
   EX.forEach(e => {
     const pl = plateauInfo(e, ui.today);
-    if (pl) plateau.push(e.name + '（约 ' + pl.weeks + ' 周没创新重量，最佳 ' + fmtKg(pl.best) + ' kg）');
+    if (pl) plateau.push(e.name + '（约 ' + pl.weeks + ' 周 e1RM 未提高，最佳 ' + fmtKg(pl.best) + ' kg）');
   });
   const plateauHTML = plateau.length ? '<div class="note plateau-note">⚠ 平台期预警：' + plateau.map(esc).join('、') + ' — 可换同类动作、加 1 组容量，或检查恢复与睡眠</div>' : '';
   return '<div class="section-title">本周复盘 · 下周建议</div>' +
@@ -3011,10 +3927,10 @@ function settingsBoxHTML() {
   }).join('');
   const m = (state.settings && state.settings.mode) || 'ppl';
   const modeSeg = [['ppl', '推/拉/腿/上/下'], ['five', '胸/背/肩/手臂/腿']].map(function (o) {
-    return '<button type="button" class="seg-btn' + (m === o[0] ? ' on' : '') + '" data-act="set-mode" data-v="' + o[0] + '" title="' + (o[0] === 'ppl' ? '练 5 天：推、拉、腿、上肢、下肢' : '练 5 天：胸、背、肩、手臂、腿（周四周日有氧休息）') + '">' + o[1] + '</button>';
+    return '<button type="button" class="seg-btn' + (m === o[0] ? ' on' : '') + '" data-act="set-mode" data-v="' + o[0] + '" title="' + (o[0] === 'ppl' ? '推荐：练 5 天，每个肌群每周 2 次，容量分两次吃完' : '备选：练 5 天，每个肌群每周 1 次，单次容量集中') + '">' + o[1] + '</button>';
   }).join('');
   return '<div class="section-title">训练分化模式</div><div class="set-box">选择每周怎么排（切换后当天计划立即变化；历史记录按日期保存不受影响）：<div class="seg">' + modeSeg + '</div>' +
-    '<div class="note">5 分化：周一胸 · 周二背 · 周三肩 · 周五手臂 · 周六腿，周四 / 周日为有氧恢复日。手臂日专门练肱二头 + 肱三头。</div></div>' +
+    '<div class="note"><b>默认推荐推 / 拉 / 腿 / 上 / 下</b>：每个肌群每周练 2 次，同样的周容量分两次吃完，单次疲劳更低、后段动作质量更稳，这是增肌效率更高的一种排法。<br><b>5 分化属于备选</b>：周一胸 · 周二背 · 周三肩 · 周五手臂 · 周六腿，周四 / 周日有氧恢复日。每个肌群每周只练 1 次，且胸日一次堆到 15 组，第 4—5 个动作的实际有效组会明显打折；腿部容量也偏低（股四 6 组、臀 0 组）。想换口味可以切过去，不建议长期当主方案。</div></div>' +
     '<div class="section-title">组间休息提醒</div><div class="set-box">休息结束时是否震动 / 响铃（切到后台后回到页面会立即提醒）：<div class="seg">' + seg + '</div></div>' +
     coachSettingsHTML();
 }
@@ -3425,7 +4341,7 @@ function backupHTML() {
     '<div class="note"><b>本机始终保有一份完整数据</b>，云同步只是可选的额外保险；无论是否登录，「导出备份（JSON）」都应每周做一次。<br>没有开启云端同步时，换手机、清理浏览器数据或卸载都会丢失本机记录。建议每周点一次「导出备份」，把文件发到微信文件传输助手；在新手机上用「导入备份」恢复。导出的 CSV 可以直接用 Excel 打开。<br>动作名称、参数、组间休息、一键替换结果（当前 ' + customCount + ' 个自定义）与新增器械（' + (state.customGear || []).length + ' 个）都包含在 JSON 备份里；当前动作库为器械适配版（' + EX.length + ' 个动作）。<br><b>有氧部分</b>：' + cardioCount + ' 段记录、心率与功率设置（年龄 / 最大心率 / FTP / Zone 区间）、每段的目标时长、功率、心率、踏频与自定义名称都在备份里。<br><b>跨类型替换</b>：当前 ' + Object.keys(state.slotModes || {}).length +     ' 个位置改过训练类型（力量 ↔ 有氧），也随备份带走；格式 version 7，旧版备份导入后会自动补齐默认值' + (FEATURE_GARMIN_EXPORT ? '；佳明导出设置（开始时间、时长、体重）也在备份里' : '') + '。<br><b>云同步</b>：登录状态与同步进度存在独立的本机键里，不会混进 JSON 备份，也不会污染导入的数据。</div>' +
     garminSettingsHTML() +
     '<button type="button" class="btn" data-act="export-json">导出备份（JSON）</button>' +
-    '<button type="button" class="btn sec" data-act="export-csv">导出训练日记（CSV / Excel）</button>' +
+    '<button type="button" class="btn sec" data-act="export-csv">导出训练记录（CSV / Excel）</button>' +
     '<button type="button" class="btn sec" data-act="export-cardio">导出有氧记录（CSV / Excel）</button>' +
     '<button type="button" class="btn sec" data-act="export-gear">导出器械库（CSV / Excel）</button>' +
     '<button type="button" class="btn sec" data-act="report-open">⇩ 周报 / 导出 PDF（可选周 · 完整组次）</button>' +
@@ -3444,6 +4360,47 @@ function planSource(mode) {
   }
   return clone(mode === 'five' ? { days: DAYS_FIVE, ex: EX_FIVE } : { days: DAYS_PPL, ex: EX_PPL });
 }
+/* ================= ⑦ 科学配对预设（按训练科学预置，可一键套用） =================
+   原则：
+   1. 对抗肌超级组（推↔拉、膝伸↔膝屈、二头↔三头）是首选：同等容量下省 30%—50% 时间，
+      力量与肌肥大效果与传统 2—3 分钟组间休息相当，且因密度提高总容量常更高；
+   2. 次选「互不抢力的不同肌群」（中束↔后束、背阔↔后束、臀伸↔膝屈），几乎不影响表现；
+   3. 不采用同肌群两个复合动作配对——第二组次数与总容量都会掉；
+   4. 自由重量主项（卧推 / 深蹲 / 划船 / RDL）保留正常做组，双进阶判断才准。
+   why 字段会显示在配对弹层里，说明为什么这么配。 */
+const PAIR_PRESETS = {
+  ppl: {
+    mon: [{ a: 'mon-2', b: 'mon-5', why: '同在哑铃区：前束推举 + 中束侧平举，互不抢力' }],
+    tue: [{ a: 'tue-4', b: 'tue-5', why: '同一个龙门架：背阔直臂下拉 + 后束面拉，不同肌群' }],
+    wed: [{ a: 'wed-4', b: 'wed-5', why: '对抗肌：膝屈（腘绳）↔ 膝伸（股四），同一片腿部器械区' }],
+    fri: [{ a: 'fri-1', b: 'fri-2', why: '对抗肌：水平推 ↔ 水平拉，器械相邻，最省时间的标准配法' },
+          { a: 'fri-3', b: 'fri-4', why: '中束 ↔ 后束：两块互不抢力的肩部小肌群' }],
+    sat: [{ a: 'sat-2', b: 'sat-3', why: '臀伸（臀大肌）↔ 膝屈（腘绳）：不同关节动作，互不抢力' }],
+  },
+  five: {
+    chest: [{ a: 'chest-3', b: 'chest-4', why: '同肌群复合→孤立（机械递减）：推胸后立刻夹胸，孤立组负荷降 10%—15%' }],
+    back: [{ a: 'back-4', b: 'back-5', why: '同一个龙门架：背阔 + 后束，不同肌群' }],
+    shoulder: [{ a: 'shoulder-3', b: 'shoulder-4', why: '中束 ↔ 后束：互不抢力，肩日最省时间的配法' }],
+    arms: [{ a: 'arms-1', b: 'arms-2', why: '对抗肌：二头 ↔ 三头，手臂日最经典的配对' },
+           { a: 'arms-3', b: 'arms-4', why: '对抗肌：二头 ↔ 三头（第二对，仍保持左右手交替）' }],
+    legs: [{ a: 'legs-4', b: 'legs-5', why: '膝屈（腘绳）↔ 踝伸（小腿）：互不抢力' }],
+  },
+};
+function presetPairsForDay(day) {
+  const mode = state.settings.mode || 'ppl';
+  const list = (PAIR_PRESETS[mode] || {})[day] || [];
+  /* 只保留当前计划里真实存在的动作：用户删过 / 换过动作后不会套出悬空配对 */
+  const keys = planSource(mode).ex.filter(function (e) { return e.day === day; }).map(function (e) { return e.key; });
+  return list.filter(function (p) { return keys.indexOf(p.a) >= 0 && keys.indexOf(p.b) >= 0; });
+}
+function applyPairPresets(day) {
+  const list = presetPairsForDay(day);
+  if (!list.length) { toast('这一天没有可套用的推荐配对'); return; }
+  list.forEach(function (p) { bindSuperset(p.a, p.b); });
+  save(); closeModal(); render();
+  toast('已套用 ' + list.length + ' 对科学配对 · 做完 A 一组会提示接着做 B');
+}
+
 /* 分化预设：按 WEEK_ORDER 位置决定哪些天休息（两种模式都适用） */
 const PLAN_PRESETS = {
   '6': [6], '5': [3, 6], '4': [3, 5, 6], '3': [1, 3, 5, 6],
@@ -3459,6 +4416,7 @@ function planEditorHTML() {
   return '<div class="note plan-top">这里是<b>当前模式（' + modeName(mode) + '）</b>的周计划。改动只影响这一模式的排布；想换模式请到「备份」页切换。下方每个训练日可改名、改目标，动作可从器械库挑选加入或自由新增，组数 / 次数 / RIR / 组间休息都能调。</div>' +
     '<div class="section-title">分化天数预设</div><div class="set-box">把一周排成练几天（其余自动设为休息日）：<div class="seg">' + presets + '</div>' +
     (custom ? '<button type="button" class="btn sec" data-act="plan-reset" style="margin-top:8px">↩ 恢复为模板默认计划</button>' : '') + '</div>' +
+    weekMinorMuscleHTML() +
     '<div class="section-title">每周训练日</div>' + days;
 }
 function planDayCardHTML(d, mode, src) {
@@ -3476,8 +4434,31 @@ function planDayCardHTML(d, mode, src) {
       ? '<div class="pd-restnote">休息日 · 不安排力量训练（可去「有氧」页加有氧）</div>'
       : '<input class="pd-goal" data-df="goal" data-dk="' + esc(d.key) + '" maxlength="60" placeholder="今日训练目标" value="' + esc(d.goal || '') + '">' +
         '<div class="pd-exs">' + (exRows || '<div class="empty">还没有动作，点下面按钮添加</div>') + '</div>' +
+        (presetPairsForDay(d.key).length
+          ? '<button type="button" class="btn sec plan-pairbtn" data-act="plan-pair" data-day="' + esc(d.key) + '">⭐ 一键套用科学配对（' + presetPairsForDay(d.key).length + ' 对）</button>'
+          : '') +
         '<button type="button" class="btn sec plan-addex" data-act="plan-addex" data-day="' + esc(d.key) + '">＋ 从器械库 / 自定义添加动作</button>') +
     '</div>';
+}
+/* 动作要点最长 200 字：先按内容估算初始行数，保证长文本首屏就完整可见；
+   再用 JS 按 scrollHeight 实时撑高。iOS 16 的 WKWebView 不支持 field-sizing，
+   固定 30px 的单行输入框会把后半段裁掉，属于「要点显示不完全」的设计缺陷。 */
+function cueRows(v) {
+  const lines = String(v || '').split('\n');
+  let n = 0;
+  for (let i = 0; i < lines.length; i++) n += Math.max(1, Math.ceil(lines[i].length / 20));
+  return Math.min(14, Math.max(2, n));
+}
+function autoGrowText(el) {
+  if (!el || el.tagName !== 'TEXTAREA' || !el.classList.contains('autogrow')) return;
+  const prev = el.style.height;
+  el.style.height = 'auto';
+  const h = el.scrollHeight;
+  el.style.height = h > 0 ? Math.min(420, h) + 'px' : (prev || '');
+}
+function autoGrowAll(root) {
+  const list = (root || document).querySelectorAll('textarea.autogrow');
+  for (let i = 0; i < list.length; i++) autoGrowText(list[i]);
 }
 function planExRowHTML(e, j, total) {
   return '<div class="plan-ex">' +
@@ -3490,7 +4471,7 @@ function planExRowHTML(e, j, total) {
     '<label>组间秒<input class="pe-num" data-ef="restSec" data-ek="' + esc(e.key) + '" type="number" min="30" max="600" value="' + esc(e.restSec) + '"></label>' +
     '<label>类型<input class="pe-txt" data-ef="kind" data-ek="' + esc(e.key) + '" maxlength="12" value="' + esc(e.kind || '') + '"></label>' +
     '</div>' +
-    '<input class="pe-cue" data-ef="cue" data-ek="' + esc(e.key) + '" maxlength="200" placeholder="动作要点 / 私人提示" value="' + esc(e.cue || '') + '">' +
+    '<textarea class="pe-cue autogrow" data-ef="cue" data-ek="' + esc(e.key) + '" maxlength="200" rows="' + cueRows(e.cue) + '" placeholder="动作要点 / 私人提示">' + esc(e.cue || '') + '</textarea>' +
     '<div class="pe-ops">' +
     (j > 0 ? '<button type="button" class="mini" data-act="plan-move" data-ek="' + esc(e.key) + '" data-dir="-1" title="上移">↑</button>' : '') +
     (j < total - 1 ? '<button type="button" class="mini" data-act="plan-move" data-ek="' + esc(e.key) + '" data-dir="1" title="下移">↓</button>' : '') +
@@ -3602,7 +4583,7 @@ function planUndo() {
     }
     syncPlan(); save();
     const el = document.querySelector('[data-ef="' + d.f + '"][data-ek="' + d.key + '"]');
-    if (el) el.value = d.old;
+    if (el) { el.value = d.old; autoGrowText(el); }
     ui.planUndo = null;
     toast('已恢复');
   }
@@ -4054,8 +5035,15 @@ function resetCardio(slotKey) {
 }
 function toggleCardioDone(slotKey) {
   const rec = cardioViewRec(slotKey);
-  writeCardio(slotKey, { done: !rec.done });
-  render(); toast(rec.done ? '已取消完成标记' : '有氧完成 · 今天收工');
+  /* 与小程序 saveCardio(true) 口径一致：没填时长不能标记完成。
+     否则会写出一条 done=true 但 minutes='' 的空有氧，历史 / 报表多出一段 0 分钟记录。
+     取消完成标记不受限制，方便随时撤销。 */
+  if (!rec.done && !(Number(rec.minutes) > 0)) { toast('先填时长'); return; }
+  /* 先把目标态存下来再写：writeCardio 会就地改写同一个 rec 对象，
+     写完后 rec.done 永远等于新值，原先的 `rec.done ? A : B` 会把两句提示说反。 */
+  const next = !rec.done;
+  writeCardio(slotKey, { done: next });
+  render(); toast(next ? '有氧完成 · 今天收工' : '已取消完成标记');
 }
 function addCardioSlot(day) {
   const n = cardioSlotCount(day);
@@ -4313,7 +5301,7 @@ function resetEx(exKey) {
 
 function fld(label, f, val, type, extra) {
   const ctrl = type === 'textarea'
-    ? '<textarea class="exf" data-f="' + f + '" rows="3">' + esc(val) + '</textarea>'
+    ? '<textarea class="exf autogrow" data-f="' + f + '" ' + (extra || '') + ' rows="' + cueRows(val) + '">' + esc(val) + '</textarea>'
     : '<input class="exf" data-f="' + f + '" type="' + type + '" ' + (extra || '') + ' value="' + esc(val) + '">';
   return '<label class="fld"><span>' + label + '</span>' + ctrl + '</label>';
 }
@@ -4700,7 +5688,7 @@ const COACH_KEY = 'workout_log_coach_v1';
 const COACH_MODEL_KEY = 'workout_log_coach_model_v1';
 const COACH_DAILY_MAX = 12;
 const COACH_MIN_GAP_MS = 3000;
-const COACH_SYSTEM = '你是「力量训练日记」内置的循证训练教练。严格遵守：' +
+const COACH_SYSTEM = '你是「无限进步」内置的循证训练教练。严格遵守：' +
   '1) 只依据用户消息里【本机计算】段落的数据回答，数据没给的一律不编造；' +
   '2) 加重重量、组数、次数、RIR 等定量结论以本机计算为唯一来源，你不得给出或改写任何具体重量数字；' +
   '3) 不做医疗诊断，用户提到关节疼痛、麻木、头晕、急性伤病时，一律建议停止训练并咨询医生或康复专业人士；' +
@@ -4752,7 +5740,7 @@ function coachLocalHTML(kind, id) {
     else rows.push('上次：暂无历史记录，今天建立起点');
     rows.push('渐进负荷：' + progression(ex, ui.today).text);
     const pl = plateauInfo(ex, ui.today);
-    if (pl) rows.push('平台期：已 ' + pl.stuck + ' 次训练（约 ' + pl.weeks + ' 周）没创新重量，最佳 ' + fmtKg(pl.best) + ' kg');
+    if (pl) rows.push('平台期：已 ' + pl.stuck + ' 次训练（约 ' + pl.weeks + ' 周）估算 1RM 没再提高，最佳 ' + fmtKg(pl.best) + ' kg');
     const ws = warmupSets(ex);
     if (ws && ws.length) rows.push('暖身组：' + ws.map(s => fmtKg(s.weight) + ' kg × ' + s.reps).join(' / '));
   } else if (kind === 'slot' || kind === 'cardio') {
@@ -4790,7 +5778,7 @@ function coachContext(kind, id) {
       } else body += '上次：暂无历史记录\n';
       body += '本机渐进负荷结论：' + progression(ex, ui.today).text + '\n';
       const pl = plateauInfo(ex, ui.today);
-      if (pl) body += '本机平台期结论：已 ' + pl.stuck + ' 次训练没创新重量，最佳 ' + fmtKg(pl.best) + ' kg\n';
+      if (pl) body += '本机平台期结论：已 ' + pl.stuck + ' 次训练估算 1RM 没再提高，最佳 ' + fmtKg(pl.best) + ' kg\n';
     } else body += '当前动作：无本机数据\n';
   } else if (kind === 'week' || kind === 'gallery') {
     const plan = weekPlanTotalSets(), done = weekDoneSets();
@@ -5118,7 +6106,7 @@ function toCSV(rows) {
 }
 function exportJSON() {
   download(JSON.stringify({ version: 7, exportedAt: new Date().toISOString(), ...state }, null, 2),
-    'application/json;charset=utf-8', '训练日记_' + ui.today + '.json');
+    'application/json;charset=utf-8', '无限进步_' + ui.today + '.json');
   toast('备份已导出');
 }
 function exportCSV() {
@@ -5128,7 +6116,7 @@ function exportCSV() {
     const rir = (r.rir !== undefined && r.rir !== null && r.rir !== '') ? (Number(r.rir) >= 5 ? '力竭' : r.rir) : '';
     rows.push([r.date, dayName(r.day), r.exName, r.setIndex, r.weight, r.reps, r.rirTarget || '', rir, vol, (state.notes && state.notes[r.exKey]) || '']);
   });
-  download(toCSV(rows), 'text/csv;charset=utf-8', '训练日记_' + ui.today + '.csv');
+  download(toCSV(rows), 'text/csv;charset=utf-8', '无限进步_' + ui.today + '.csv');
   toast('表格已导出');
 }
 function exportGearCSV() {
@@ -5167,7 +6155,7 @@ function garminNotes(date, recs, cards, minutes) {
   const byEx = {};
   recs.forEach(r => { (byEx[r.exKey] = byEx[r.exKey] || []).push(r); });
   const dayKey = recs.length ? recs[0].day : (cards.length ? cards[0].day : '');
-  const lines = ['训练日记 · ' + date + (dayKey ? '（' + dayName(dayKey) + '）' : '')];
+  const lines = ['无限进步 · ' + date + (dayKey ? '（' + dayName(dayKey) + '）' : '')];
   const exKeys = Object.keys(byEx);
   if (exKeys.length) {
     lines.push('【力量训练】');
@@ -5196,7 +6184,7 @@ function garminNotes(date, recs, cards, minutes) {
     });
   }
   lines.push('总时长 ' + minutes + ' 分钟。卡路里按 MET 公式估算（力量约 2.5 MET），非手表逐秒实测。');
-  lines.push('由「训练日记」导出；导入佳明后请把活动类型改为「力量训练」或对应有氧类型。');
+  lines.push('由「无限进步」导出；导入佳明后请把活动类型改为「力量训练」或对应有氧类型。');
   return lines.join('\n');
 }
 /* 生成佳明 TCX，返回 { xml, text, shifted, secs, startISO, endISO }；无记录返回 null。
@@ -5474,14 +6462,26 @@ function completeSet(exKey, idx) {
   if (!state.sessions[ui.today]) state.sessions[ui.today] = { start: Date.now() };
   ui.lastCompleteAt = Date.now();
   save();
-  startTimer(exKey);
+  /* 超级组流程提示：配对动作同轮的那组还没做时，A 做完不启动休息，提示立刻去做 B；
+     只有同轮两组都完成（或配对动作没有第 idx 组）才启动组间休息倒计时。
+     与「超级组配对」弹层里写的 A1 一组 → A2 一组 → 成对完成再休息 规则保持一致。 */
+  const pairKey = supersetPartner(exKey);
+  const pairEx = pairKey ? effEx(findEx(pairKey)) : null;
+  const pairRoundOpen = !!(pairEx && idx <= setCount(pairEx, ui.today) && !recFor(pairKey, idx, ui.today));
+  const restMsg = '休息 ' + restLabel(restSeconds(ex));
   if (prevMax > 0 && w > prevMax) {
-    toast('🏆 重量新纪录！' + ex.name + ' ' + w + ' kg × ' + r + ' 次，此前最大 ' + prevMax + ' kg · 休息 ' + restLabel(restSeconds(ex)));
+    toast('🏆 重量新纪录！' + ex.name + ' ' + w + ' kg × ' + r + ' 次，此前最大 ' + prevMax + ' kg' + (pairRoundOpen ? '' : ' · ' + restMsg));
   } else if (prevMaxReps > 0 && r > prevMaxReps) {
-    toast('🏆 次数新纪录！' + ex.name + ' ' + w + ' kg × ' + r + ' 次，此前最多 ' + prevMaxReps + ' 次 · 休息 ' + restLabel(restSeconds(ex)));
+    toast('🏆 次数新纪录！' + ex.name + ' ' + w + ' kg × ' + r + ' 次，此前最多 ' + prevMaxReps + ' 次' + (pairRoundOpen ? '' : ' · ' + restMsg));
+  } else if (pairRoundOpen) {
+    toast('已记录 · 超级组：不休息，现在去做 ' + (pairEx || {}).name);
+  } else if (pairEx) {
+    toast('已记录 · 本轮超级组完成 · ' + restMsg);
   } else {
-    toast('已记录 · 休息 ' + restLabel(restSeconds(ex)));
+    toast('已记录 · ' + restMsg);
   }
+  if (pairRoundOpen) { clearInterval(ui.timerHandle); ui.timerEnd = 0; saveUI(); }
+  else startTimer(exKey);
   render();
 }
 function undoSet(exKey, idx) {
@@ -5495,7 +6495,9 @@ function undoSet(exKey, idx) {
 /* 只读回看页里，任何会写训练数据的动作都直接挡掉（页面本身也不渲染这些按钮，
    这层是防止旧 DOM / 自定义事件绕过的保险）。 */
 function isReviewWriteAct(act) {
-  return /^(done|undo|use-suggest|step|set-rir|uselast|addset|start-rest|skip|unskip|settype|start-session|end-session|skip-timer|superset-open|warmup|cardio|plan-|set-mode|edit-ex|open-swap|swap-random|plate|set-alert|import|clear|reset-|note|body-|gear-|rec-|deload|del-today-|save-)/.test(act);
+  /* block-* 是周期化的写操作（跳过 / 顺延 / 取消 / 提前减量），
+     只读回看与「看别的训练日」时同样要拦住，否则预览状态下会改掉本周周期。 */
+  return /^(diet-|done|undo|use-suggest|step|set-rir|uselast|addset|start-rest|skip|unskip|settype|start-session|end-session|skip-timer|superset-open|pair-jump|pair-preset|warmup|cardio|plan-|block-|set-mode|edit-ex|open-swap|swap-random|plate|set-alert|import|clear|reset-|note|body-|gear-|rec-|deload|del-today-|save-)/.test(act);
 }
 
 document.addEventListener('click', function (e) {
@@ -5543,6 +6545,38 @@ document.addEventListener('click', function (e) {
     return;
   }
   /* v18：更多面板 / 晨间恢复与热身区折叠 */
+  /* ---------- 饮食模块动作 ---------- */
+  if (act === 'diet-goal') { openDietGoalForm(); return; }
+  if (act === 'diet-goal-save') { saveDietGoal(); return; }
+  if (act === 'diet-picker') { openDietPicker(el.dataset.meal); return; }
+  if (act === 'diet-cat') { ui.diet = ui.diet || {}; ui.diet.cat = el.dataset.cat || ''; ui.diet.pickFid = ''; renderDietList(); return; }
+  if (act === 'diet-pick') {
+    ui.diet = ui.diet || {}; ui.diet.pickFid = el.dataset.fid;
+    ui.diet.grams = 0; renderDietPicker(); return;
+  }
+  if (act === 'diet-back-pick') { ui.diet = ui.diet || {}; ui.diet.pickFid = ''; renderDietPicker(); return; }
+  if (act === 'diet-grams') {
+    ui.diet = ui.diet || {}; ui.diet.grams = Number(el.dataset.g) || 0;
+    const gi = document.querySelector('#modal [data-f="dietGram"]'); if (gi) gi.value = String(ui.diet.grams);
+    renderDietPortion(); return;
+  }
+  if (act === 'diet-confirm') {
+    const gi = document.querySelector('#modal [data-f="dietGram"]');
+    const grams = Number(gi && gi.value) || Number((ui.diet || {}).grams) || 0;
+    if (!(grams > 0)) { toast('请填克数'); return; }
+    if (grams > 5000) { toast('单次最多 5000g，更大份量请分次记'); return; }
+    const fid = ui.diet.pickFid, meal = ui.diet.pickMeal;
+    if (dietAddEntry(fid, grams, meal, ui.today)) {
+      ui.diet.pickFid = ''; closeModal(); render(); toast('已记入今日饮食');
+    }
+    return;
+  }
+  if (act === 'diet-del') { dietDelEntry(el.dataset.id, ui.today); render(); return; }
+  if (act === 'diet-fav-form') { openDietFavForm(el.dataset.meal); return; }
+  if (act === 'diet-fav-save') { saveDietFav(el.dataset.meal); return; }
+  if (act === 'diet-fav-use') { useDietFav(el.dataset.id); return; }
+  if (act === 'diet-fav-del') { delDietFav(el.dataset.id); return; }
+
   if (act === 'open-more') { openMore(); return; }
   if (act === 'close-more') { closeMore(); return; }
   if (act === 'app-refresh') { closeMore(); appRefresh(); return; }
@@ -5746,6 +6780,7 @@ document.addEventListener('click', function (e) {
   else if (act === 'deload-on') {
     state.deload[weekStartOf(ui.today)] = true;
     delete state.deloadSkip[weekStartOf(ui.today)];
+    delete state.blockSkip[weekStartOf(ui.today)];
     save(); render();
     toast('本周已减量：组数 ×0.7，重量维持');
   }
@@ -5753,9 +6788,36 @@ document.addEventListener('click', function (e) {
     state.deloadSkip[weekStartOf(ui.today)] = true;
     save(); render();
   }
+  else if (act === 'block-skip') {
+    state.blockSkip[weekStartOf(ui.today)] = true;
+    delete state.blockExtend[weekStartOf(ui.today)];
+    save(); render();
+    toast('本周按模板组数练，跳过周期调整');
+  }
+  else if (act === 'block-resume') {
+    delete state.blockSkip[weekStartOf(ui.today)];
+    save(); render();
+    toast('已恢复本周的周期调整');
+  }
+  else if (act === 'block-extend') {
+    /* 顺延的是「下一周」：本周是第 3 周，blockInfo 里 last 为 false，
+       写本周永远不生效（下一周读的是下一周的 key），等于按钮没反应。 */
+    state.blockExtend[weekStartOf(shiftDay(ui.today, 7))] = true;
+    delete state.blockSkip[weekStartOf(ui.today)];
+    save(); render();
+    toast('已安排下周顺延，继续按峰值练，不减量');
+  }
+  else if (act === 'block-extend-cancel') {
+    delete state.blockExtend[weekStartOf(shiftDay(ui.today, 7))];
+    save(); render();
+    toast('已取消顺延，下周按计划减量');
+  }
   else if (act === 'superset-open') openSupersetModal(el.dataset.ex);
   else if (act === 'superset-pick') setSuperset(el.dataset.ex, el.dataset.pair);
+  else if (act === 'pair-preset') setSuperset(el.dataset.a, el.dataset.b);
+  else if (act === 'plan-pair') applyPairPresets(el.dataset.day);
   else if (act === 'superset-clear') clearSuperset(el.dataset.ex);
+  else if (act === 'pair-jump') pairJump(el.dataset.ex);
   else if (act === 'warmup') {
     const i = Number(el.dataset.i); if (!Number.isFinite(i)) return;
     const arr = state.warmup[ui.today] || (state.warmup[ui.today] = []);
@@ -5809,11 +6871,32 @@ document.addEventListener('keydown', function (e) {
 
 document.addEventListener('input', function (e) {
   const el = e.target;
+  /* 长文本要点边输入边撑高，保证 200 字全程可见可改 */
+  if (el && el.tagName === 'TEXTAREA' && el.classList.contains('autogrow')) autoGrowText(el);
   /* v20：只读回看页不渲染任何输入框，这里再挡一层，避免旧 DOM 残留把草稿写回历史日期 */
   if (ui.reviewDate) return;
   /* v24：非今天的训练日是只读预览，输入 / 草稿 / 有氧字段一律不落盘 */
   if (isOffDayView()) return;
   /* 教练问题输入即落盘：iOS 常直接杀进程、不派发卸载事件，别让打了一半的问题丢掉 */
+  if (el.id === 'dietSearch') {
+    ui.diet = ui.diet || {}; ui.diet.query = String(el.value || '');
+    renderDietList();
+    return;
+  }
+  if (el.dataset && el.dataset.f === 'dietGram') {
+    ui.diet = ui.diet || {}; ui.diet.grams = Number(el.value) || 0;
+    const box = document.querySelector('#modal .diet-total-box');
+    if (box) {
+      const f = foodById(ui.diet.pickFid);
+      if (f) {
+        const ratio = (Number(el.value) || 0) / 100;
+        const kc = Math.round(f.kcal * ratio);
+        const txt = f.acc === 'e' ? '约 ' + Math.max(0, kc - Math.round(f.err * ratio)) + '–' + (kc + Math.round(f.err * ratio)) : String(kc);
+        box.innerHTML = '<b>' + txt + ' kcal</b><span>蛋白 ' + fmtKg(f.p * ratio) + 'g · 碳水 ' + fmtKg(f.c * ratio) + 'g · 脂肪 ' + fmtKg(f.f * ratio) + 'g</span>';
+      }
+    }
+    return;
+  }
   if (el.id === 'coachQ') {
     ui.coach.q = String(el.value || '').slice(0, 300);
     saveUI();
@@ -6029,6 +7112,9 @@ document.getElementById('importFile').addEventListener('change', function (e) {
 
 const uiRestoreMsg = restoreUI();   // 被 iOS 杀后台后：先恢复界面状态与计时器，再渲染
 render();
+/* 弹层（编辑动作 / 教练中心等）由各入口 innerHTML 注入，统一在点击后下一帧补一次撑高；
+   捕获阶段注册，晚于业务处理又能覆盖所有弹层入口。 */
+document.addEventListener('click', function () { setTimeout(function () { autoGrowAll(document); }, 0); }, true);
 if (uiRestoreMsg) toast('↩ ' + uiRestoreMsg);
 if (!storageOk) toast('本机存储不可用，请用导出功能备份');
 /* 云同步初始化：仅开启过同步时才会联网；SDK 未加载时静默保持纯本地 */

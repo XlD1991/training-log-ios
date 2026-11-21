@@ -1,11 +1,11 @@
-/* 训练日记 PWA service worker：离线可开 + 线上更新立即可见。
+/* 无限进步 PWA service worker：离线可开 + 线上更新立即可见。
    策略：网络优先，失败回退缓存。
    v19 三处修复：① 云 SDK 已内联进 index.html，不再单独缓存 cloud-sdk.js；
    ② install 逐项容错，任一资源 403 不会让整个 SW 安装失败（否则新版本永远装不上）；
    ③ 非 2xx 响应绝不写缓存——站点鉴权失败会返回「链接不完整」的 HTML，
       过去被当成 JS 缓存下来，导致云服务一直加载不了且刷新无效。 */
-const CACHE = 'trainlog-v34';
-const ASSETS = ['./', './index.html', './app.js', './style.css', './icon.svg', './manifest.webmanifest'];
+const CACHE = 'trainlog-v40';
+const ASSETS = ['./', './index.html', './foods.js', './app.js', './style.css', './icon.svg', './manifest.webmanifest'];
 
 /* v34：会话失效兜底修复。
    过去 403 时无论什么请求都回退到缓存的首页 HTML——app.js 拿到一段 HTML 当脚本解析，

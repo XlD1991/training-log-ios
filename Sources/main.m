@@ -182,8 +182,51 @@ static NSString *TLMimeType(NSString *path) {
     ]];
     _webView = webView;
 
+    /* 键盘高度注入：iOS WKWebView 在视口受限时，网页里的 visualViewport
+       不会随键盘变化，纯 JS 算不出键盘高度，底部输入弹层会被键盘盖住。
+       这里监听 UIKit 键盘通知，把精确高度注入 window.__setKeyboardHeight，
+       网页据此把 fixed 弹层抬到键盘上方。 */
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillChange:)
+                                                 name:UIKeyboardWillShowNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillChange:)
+                                                 name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillHide:)
+                                                 name:UIKeyboardWillHideNotification
+                                               object:nil];
+
     NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@://local/index.html", TLScheme]];
     [webView loadRequest:[NSURLRequest requestWithURL:url]];
+}
+
+/* 把键盘 frame 换算到 self.view 坐标系，算出它遮住网页底部的高度。 */
+- (CGFloat)keyboardOverlayHeight:(NSNotification *)note {
+    NSDictionary *info = note.userInfo ?: @{};
+    CGRect kbFrame = [info[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    if (CGRectIsEmpty(kbFrame)) return 0;
+    CGRect inView = [self.view convertRect:kbFrame fromView:nil];
+    CGFloat viewH = self.view.bounds.size.height;
+    CGFloat visibleTop = CGRectGetMinY(inView);
+    if (visibleTop >= viewH) return 0;   /* 键盘已收起（frame 落到屏幕外） */
+    return MAX(0, viewH - visibleTop);
+}
+
+- (void)keyboardWillChange:(NSNotification *)note {
+    CGFloat h = [self keyboardOverlayHeight:note];
+    NSString *js = [NSString stringWithFormat:@"window.__setKeyboardHeight && window.__setKeyboardHeight(%.0f)", h];
+    [_webView evaluateJavaScript:js completionHandler:nil];
+}
+
+- (void)keyboardWillHide:(NSNotification *)note {
+    [_webView evaluateJavaScript:@"window.__setKeyboardHeight && window.__setKeyboardHeight(0)" completionHandler:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 #pragma mark - WKUIDelegate: synchronous storage bridge
