@@ -138,70 +138,13 @@ static NSString *TLMimeType(NSString *path) {
 
 #pragma mark - File operations (write to Documents/Exports + share)
 
-@class TLPDFRenderer;   /* forward: PDF 渲染失败时借 TLFileOps 弹提示 */
-
 @interface TLFileOps : NSObject
 + (NSString *)exportsDir;
 + (BOOL)writeData:(NSData *)data filename:(NSString *)filename;
 + (BOOL)writeBase64:(NSString *)b64 filename:(NSString *)filename;
++ (NSData *)pdfFromHTML:(NSString *)html;
 + (void)shareFile:(NSString *)filename presenter:(UIViewController *)presenter;
 + (void)alertOn:(UIViewController *)presenter message:(NSString *)message;
-@end
-
-#pragma mark - PDF renderer (offscreen WKWebView -> PDF file -> share)
-
-/* 保留活跃实例，避免异步渲染期间被释放；完成或失败后从数组移除。 */
-static NSMutableArray<TLPDFRenderer *> *TLActivePDFRenderers;
-
-@interface TLPDFRenderer : NSObject <WKNavigationDelegate>
-@property (nonatomic, strong) WKWebView *webView;
-@property (nonatomic, copy) NSString *filename;
-@property (nonatomic, weak) UIViewController *presenter;
-- (void)render:(NSString *)html filename:(NSString *)filename presenter:(UIViewController *)presenter;
-@end
-
-@implementation TLPDFRenderer
-
-- (void)render:(NSString *)html filename:(NSString *)filename presenter:(UIViewController *)presenter {
-    if (!TLActivePDFRenderers) TLActivePDFRenderers = [NSMutableArray array];
-    [TLActivePDFRenderers addObject:self];
-    self.filename = filename;
-    self.presenter = presenter;
-
-    WKWebViewConfiguration *cfg = [[WKWebViewConfiguration alloc] init];
-    WKWebView *wv = [[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 595, 842) configuration:cfg];
-    wv.navigationDelegate = self;
-    self.webView = wv;
-    /* A4 尺寸离屏渲染；不加入视图层级，createPDF 仍可渲染已加载内容 */
-    [wv loadHTMLString:html baseURL:[NSURL URLWithString:[NSString stringWithFormat:@"%@://local/", TLScheme]]];
-}
-
-- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    if (@available(iOS 14.0, *)) {
-        [webView createPDFWithConfiguration:nil completionHandler:^(NSData * _Nullable pdfData, NSError * _Nullable error) {
-            if (!error && pdfData) {
-                if ([TLFileOps writeData:pdfData filename:self.filename]) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        [TLFileOps shareFile:self.filename presenter:self.presenter];
-                    });
-                } else {
-                    [TLFileOps alertOn:self.presenter message:@"PDF 写入失败，请重试"];
-                }
-            } else {
-                [TLFileOps alertOn:self.presenter message:@"PDF 生成失败，请重试"];
-            }
-            [TLActivePDFRenderers removeObject:self];
-        }];
-    } else {
-        [TLFileOps alertOn:self.presenter message:@"此系统版本不支持直接生成 PDF"];
-        [TLActivePDFRenderers removeObject:self];
-    }
-}
-
-- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    [TLFileOps alertOn:self.presenter message:@"PDF 页面加载失败，请重试"];
-    [TLActivePDFRenderers removeObject:self];
-}
 @end
 
 #pragma mark - File operations implementation
@@ -237,6 +180,35 @@ static NSMutableArray<TLPDFRenderer *> *TLActivePDFRenderers;
     if (!b64.length) return NO;
     NSData *data = [[NSData alloc] initWithBase64EncodedString:b64 options:NSDataBase64DecodingIgnoreUnknownCharacters];
     return [self writeData:data filename:filename];
+}
+
+/* 同步把报告 HTML 渲染成 PDF。用 UIKit 的 UIMarkupTextPrintFormatter，
+   不依赖离屏 WKWebView——后者在自定义 scheme + 未入视图层级时 didFinishNavigation
+   不触发、createPDF 静默失败，正是"假成功"的根因。此方法是同步的：
+   生成成功返回非空 NSData，失败返回 nil，调用方据此返回真实结果给网页。 */
++ (NSData *)pdfFromHTML:(NSString *)html {
+    if (!html.length) return nil;
+    UIMarkupTextPrintFormatter *formatter = [[UIMarkupTextPrintFormatter alloc] initWithMarkupText:html];
+    UIPrintPageRenderer *renderer = [[UIPrintPageRenderer alloc] init];
+    [renderer addPrintFormatter:formatter startingAtPageAtIndex:0];
+
+    CGRect paper = CGRectMake(0, 0, 595.2, 841.8);          /* A4 纵向 pt */
+    CGRect printable = CGRectMake(28, 28, paper.size.width - 56, paper.size.height - 56);
+    [renderer setValue:[NSValue valueWithCGRect:paper] forKey:@"paperRect"];
+    [renderer setValue:[NSValue valueWithCGRect:printable] forKey:@"printableRect"];
+
+    NSInteger pages = [renderer numberOfPages];
+    if (pages < 1) pages = 1;
+    if (pages > 60) pages = 60;  /* 防御极端内容导致页数爆炸 */
+
+    NSMutableData *pdf = [NSMutableData data];
+    UIGraphicsBeginPDFContextToData(pdf, paper, nil);
+    for (NSInteger i = 0; i < pages; i++) {
+        UIGraphicsBeginPDFPage();
+        [renderer drawPageAtIndex:i inRect:printable];
+    }
+    UIGraphicsEndPDFContext();
+    return pdf.length > 100 ? [pdf copy] : nil;
 }
 
 + (void)shareFile:(NSString *)filename presenter:(UIViewController *)presenter {
@@ -385,11 +357,19 @@ completionHandler:(void (^)(NSString * _Nullable))completionHandler {
         completionHandler(ok ? @"1" : @"0");
         return;
     }
-    /* 生成 PDF：异步渲染，受理即返回 1，完成后弹分享面板 */
+    /* 生成 PDF：同步渲染 + 写盘，只有真实成功才返回 1 并弹分享面板。
+       不再"受理即返回"，避免文件没生成就提示"已保存"的假成功。 */
     if ([op isEqualToString:@"savePDF"]) {
-        TLPDFRenderer *renderer = [[TLPDFRenderer alloc] init];
-        [renderer render:v filename:k presenter:self];
-        completionHandler(@"1");
+        NSData *pdf = [TLFileOps pdfFromHTML:v];
+        BOOL ok = pdf && [TLFileOps writeData:pdf filename:k];
+        if (ok) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [TLFileOps shareFile:k presenter:self];
+            });
+        } else {
+            [TLFileOps alertOn:self message:@"PDF 生成失败，请重试"];
+        }
+        completionHandler(ok ? @"1" : @"0");
         return;
     }
     /* 复制到系统剪贴板 */

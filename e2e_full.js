@@ -1001,11 +1001,15 @@
         var clickFail = q('[data-act="export-json"]');
         if (clickFail) click(clickFail);
         eq(state.lastBackup, oldBackup, '写入失败时不更新备份时间（消除假备份）');
-        /* 25.5 PDF 走原生渲染桥 */
+        /* 25.5 PDF 走原生渲染桥：同步真实返回结果 */
         var okPdf = exportPDF(ui.today, { detail: true, stats: true });
         eq(okPdf, true, 'PDF 走原生桥返回成功');
         ok(pdfs.length >= 1 && /\.pdf$/.test(pdfs[pdfs.length - 1].name), '原生收到 .pdf 渲染请求');
         ok(pdfs.length && pdfs[pdfs.length - 1].html.indexOf('<!doctype html>') === 0, 'PDF 内容是完整 HTML');
+        /* 25.5b PDF 生成失败必须返回 false（防"假成功"回归：受理≠成功） */
+        window.__TL_NATIVE__.savePDF = function () { return false; };
+        eq(exportPDF(ui.today, { detail: true }), false, 'PDF 生成失败时返回 false，不报已保存');
+        ok(has('PDF 生成失败'), 'PDF 失败给出真实错误提示');
         /* 25.6 原生剪贴板与触觉桥可用（复制入口依赖当天有明细，这里直测桥） */
         eq(window.__TL_NATIVE__.copyText('测试明细'), true, '原生剪贴板桥返回成功');
         eq(copies.length, 1, '文本已送到原生剪贴板');

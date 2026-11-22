@@ -6873,7 +6873,7 @@ document.addEventListener('click', function (e) {
   else if (act === 'export-cardio') { if (exportCardioCSV()) markBackup(); }
   else if (act === 'export-gear') { if (exportGearCSV()) markBackup(); }
   else if (act === 'goto-backup') { ui.tab = 'backup'; window.scrollTo(0, 0); render(); }
-  else if (act === 'export-pdf') { if (exportPDF(ui.today, { detail: true, stats: true })) toast('周报 PDF 已保存'); } // 兼容旧入口
+  else if (act === 'export-pdf') { if (exportPDF(ui.today, { detail: true, stats: true })) toast(window.__TL_NATIVE__ ? '周报 PDF 已生成，请在面板中选「存储到文件」' : '请在打印对话框选「另存为 PDF」'); } // 兼容旧入口
   /* ---- 周报 / 导出 PDF（T4） ---- */
   else if (act === 'report-open') openReportModal();
   else if (act === 'report-prev') shiftReportAnchor(-1);
@@ -6894,7 +6894,7 @@ document.addEventListener('click', function (e) {
     const ok = ui.reportMode === 'range'
       ? exportRangePDF(activeReportRange().start, activeReportRange().end, ui.reportOpt)
       : exportPDF(ui.reportAnchor || ui.today, ui.reportOpt);
-    if (ok) toast(window.__TL_NATIVE__ ? '周报 PDF 已保存，请在面板中选「存储到文件」' : '请在打印对话框选「另存为 PDF」');
+    if (ok) toast(window.__TL_NATIVE__ ? '周报 PDF 已生成，请在面板中选「存储到文件」' : '请在打印对话框选「另存为 PDF」');
   }
   else if (act === 'start-session') { if (!state.sessions[ui.today]) state.sessions[ui.today] = { start: Date.now() }; save(); render(); }
   else if (act === 'end-session') {
