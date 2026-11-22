@@ -150,7 +150,7 @@ input{font-family:inherit}
 .tabbar button .ti{font-size:20px;line-height:1}
 .tabbar button.active{color:var(--primary);font-weight:600}
 
-.timer{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));z-index:40;background:#16202E;color:#fff;border-radius:99px;padding:9px 12px 9px 16px;font-size:13px;display:flex;align-items:center;gap:10px;white-space:nowrap}
+.timer{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom) + var(--kb,0px));z-index:40;background:#16202E;color:#fff;border-radius:99px;padding:9px 12px 9px 16px;font-size:13px;display:flex;align-items:center;gap:10px;white-space:nowrap}
 .timer b{font-size:15px;font-variant-numeric:tabular-nums}
 .timer button{background:rgba(255,255,255,.16);color:#fff;border-radius:99px;padding:5px 10px;font-size:12px;min-height:32px}
 .timer-total{font-size:11px;color:rgba(255,255,255,.7)}

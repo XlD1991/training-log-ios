@@ -188,27 +188,52 @@ static NSString *TLMimeType(NSString *path) {
    生成成功返回非空 NSData，失败返回 nil，调用方据此返回真实结果给网页。 */
 + (NSData *)pdfFromHTML:(NSString *)html {
     if (!html.length) return nil;
+    CGRect paper = CGRectMake(0, 0, 595.2, 841.8);          /* A4 纵向 pt */
+    CGRect printable = CGRectMake(28, 28, paper.size.width - 56, paper.size.height - 56);
+
     UIMarkupTextPrintFormatter *formatter = [[UIMarkupTextPrintFormatter alloc] initWithMarkupText:html];
     UIPrintPageRenderer *renderer = [[UIPrintPageRenderer alloc] init];
     [renderer addPrintFormatter:formatter startingAtPageAtIndex:0];
 
-    CGRect paper = CGRectMake(0, 0, 595.2, 841.8);          /* A4 纵向 pt */
-    CGRect printable = CGRectMake(28, 28, paper.size.width - 56, paper.size.height - 56);
-    [renderer setValue:[NSValue valueWithCGRect:paper] forKey:@"paperRect"];
-    [renderer setValue:[NSValue valueWithCGRect:printable] forKey:@"printableRect"];
+    /* paperRect / printableRect 是 UIPrintPageRenderer 未文档化的可写 KVC。
+       iOS 16 上通常有效，但一旦内部实现变更就会抛 NSUnknownKeyException。
+       必须包 @try：抛异常时返回 nil，让调用方报"生成失败"，绝不让异常
+       穿透到 prompt 桥——否则 completionHandler 不执行，网页会永久假死。 */
+    @try {
+        [renderer setValue:[NSValue valueWithCGRect:paper] forKey:@"paperRect"];
+        [renderer setValue:[NSValue valueWithCGRect:printable] forKey:@"printableRect"];
+    } @catch (NSException *e) {
+        NSLog(@"[PDF] KVC paperRect failed: %@", e);
+        return nil;
+    }
 
-    NSInteger pages = [renderer numberOfPages];
+    NSInteger pages = 0;
+    @try {
+        pages = [renderer numberOfPages];
+    } @catch (NSException *e) {
+        NSLog(@"[PDF] numberOfPages failed: %@", e);
+        return nil;
+    }
     if (pages < 1) pages = 1;
-    if (pages > 60) pages = 60;  /* 防御极端内容导致页数爆炸 */
+    if (pages > 200) pages = 200;  /* 防御极端内容；366 天明细可能需要更多页 */
 
     NSMutableData *pdf = [NSMutableData data];
-    UIGraphicsBeginPDFContextToData(pdf, paper, nil);
-    for (NSInteger i = 0; i < pages; i++) {
-        UIGraphicsBeginPDFPage();
-        [renderer drawPageAtIndex:i inRect:printable];
+    BOOL ctxBegan = NO;
+    @try {
+        UIGraphicsBeginPDFContextToData(pdf, paper, nil);
+        ctxBegan = YES;
+        for (NSInteger i = 0; i < pages; i++) {
+            UIGraphicsBeginPDFPage();
+            [renderer drawPageAtIndex:i inRect:printable];
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[PDF] draw failed: %@", e);
+        if (ctxBegan) { UIGraphicsEndPDFContext(); }
+        return nil;
     }
-    UIGraphicsEndPDFContext();
-    return pdf.length > 100 ? [pdf copy] : nil;
+    if (ctxBegan) { UIGraphicsEndPDFContext(); }
+    /* 空白 PDF 也远超 100 字节；用 1024 过滤掉"仅页眉页脚"的退化结果 */
+    return pdf.length > 1024 ? [pdf copy] : nil;
 }
 
 + (void)shareFile:(NSString *)filename presenter:(UIViewController *)presenter {
@@ -360,8 +385,15 @@ completionHandler:(void (^)(NSString * _Nullable))completionHandler {
     /* 生成 PDF：同步渲染 + 写盘，只有真实成功才返回 1 并弹分享面板。
        不再"受理即返回"，避免文件没生成就提示"已保存"的假成功。 */
     if ([op isEqualToString:@"savePDF"]) {
-        NSData *pdf = [TLFileOps pdfFromHTML:v];
-        BOOL ok = pdf && [TLFileOps writeData:pdf filename:k];
+        /* 任何异常都不能吞掉 completionHandler——否则 window.prompt 永久挂起，
+           整个网页假死。pdfFromHTML 内部已各段 @try，这里是最后一道兜底。 */
+        __block BOOL ok = NO;
+        @try {
+            NSData *pdf = [TLFileOps pdfFromHTML:v];
+            ok = pdf && [TLFileOps writeData:pdf filename:k];
+        } @catch (NSException *e) {
+            NSLog(@"[PDF] savePDF op exception: %@", e);
+        }
         if (ok) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [TLFileOps shareFile:k presenter:self];
@@ -409,7 +441,26 @@ runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    if (_openPanelCompletion) _openPanelCompletion(urls);
+    /* DocumentPicker 返回的是安全作用域 URL（iCloud/文件 App 的原位置），
+       直接透传给 WKWebView 的话 FileReader 常常读不到内容。这里先取得访问权、
+       读出数据、拷到 App 自己的 Documents/Imports（普通 file URL），
+       再把普通 URL 交给 WebKit——导入 100% 可读。 */
+    NSMutableArray<NSURL *> *readable = [NSMutableArray array];
+    for (NSURL *u in (urls ?: @[])) {
+        BOOL secured = [u startAccessingSecurityScopedResource];
+        NSData *data = [NSData dataWithContentsOfURL:u];
+        if (secured) [u stopAccessingSecurityScopedResource];
+        if (!data) continue;
+        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *dir = [docs stringByAppendingPathComponent:@"Imports"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:NULL];
+        NSString *name = u.lastPathComponent ?: @"import.json";
+        NSString *path = [dir stringByAppendingPathComponent:name];
+        if ([data writeToFile:path atomically:YES]) {
+            [readable addObject:[NSURL fileURLWithPath:path]];
+        }
+    }
+    if (_openPanelCompletion) _openPanelCompletion(readable);
     _openPanelCompletion = nil;
 }
 

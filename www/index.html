@@ -60,8 +60,9 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     var HINT_ID = '__trainlog_session_hint';
     var SHARE = 'P4MYIH6XDQ';          // 分享会话码，用于拼出可重新建立会话的完整链接
     function fullLink() {
-      try { return location.origin + location.pathname + '?sharecode=' + SHARE; }
-      catch (e) { return '?sharecode=' + SHARE; }
+      /* 自定义 scheme 下 location.origin 恒为 "null"，拼出的链接无效。
+         原生壳注册的 scheme 固定为 traininglog://local/index.html。 */
+      return 'traininglog://local/index.html?sharecode=' + SHARE;
     }
     function isReady() {
       try { return !!(window.__TRAINLOG_READY__); } catch (e) { return false; }

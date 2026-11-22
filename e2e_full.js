@@ -1016,6 +1016,14 @@
         ok(typeof copyGarminNotes === 'function', '复制明细入口存在');
         buzz();
         ok(haptics >= 1, '组间休息提醒走原生触觉');
+        /* 25.7 打印 CSS 兼容性：原生 UIMarkupTextPrintFormatter 不支持 grid/flex */
+        var printHtml = printReportHTML('<div>x</div>');
+        ok(printHtml.indexOf('display:grid') < 0 && printHtml.indexOf('display:flex') < 0,
+           '打印 CSS 不含 grid/flex（原生打印引擎不支持）');
+        ok(printHtml.indexOf('display:inline-block') >= 0, '打印 CSS 用 inline-block 兼容布局');
+        /* 25.8 音频解锁：首次手势预热常驻 context，而非定时器里新建 */
+        ok(typeof unlockAudio === 'function', '音频解锁函数存在');
+        ok(typeof beep === 'function', '提示音函数存在');
         /* 清理 mock，避免影响后续 */
         delete window.__TL_NATIVE__;
       } catch (e) {

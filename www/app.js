@@ -3601,24 +3601,28 @@ function weeklyReportHTML(anchorStr, opts) {
 /* 打印区域 → 独立 HTML（内联打印样式），供原生渲染成 PDF。
    原生不可用时回退到浏览器打印对话框。 */
 function printReportHTML(bodyHtml) {
+  /* 打印专用 CSS：只用 CSS2.1（inline-block / 表格 / margin），不用 grid/flex/gap。
+     原生用 UIMarkupTextPrintFormatter 渲染，它对现代布局支持很差——
+     grid 完全失效、flex 残缺，会导致统计卡片与进度条挤成一团。 */
   const css = 'body{margin:0;padding:16px;color:#000;font:13px/1.6 -apple-system,"PingFang SC",sans-serif}' +
     'h1{font-size:22px;margin:0 0 4px}.rsub{color:#555;margin-bottom:12px}' +
     '.section-title{font-size:15px;font-weight:700;margin:16px 0 6px}' +
     '.stat-card{border:1px solid #ccc;padding:8px 10px;margin-bottom:10px}' +
-    '.stat-h{font-weight:700;margin-bottom:6px}.bar-row{display:flex;align-items:center;gap:8px;padding:2px 0}' +
-    '.bl{width:44px;color:#555}.btrack{flex:1;height:10px;background:#ddd;border-radius:4px;overflow:hidden}' +
+    '.stat-h{font-weight:700;margin-bottom:6px}.bar-row{font-size:0;padding:2px 0;white-space:nowrap}' +
+    '.bl{display:inline-block;font-size:13px;width:44px;color:#555;vertical-align:middle}' +
+    '.btrack{display:inline-block;font-size:13px;width:78%;height:10px;background:#ddd;border-radius:4px;overflow:hidden;vertical-align:middle}' +
     '.btrack i{display:block;height:100%;background:#3B6FE0}.btrack i.k{background:#1F9D55}' +
     '.pr-line{padding:6px 0;border-bottom:1px solid #eee;line-height:1.5}.pr-line b{display:inline-block;min-width:92px}' +
-    '.pr-row{display:flex;gap:8px;padding:2px 0}.prn{flex:1}' +
-    '.rsum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 10px}' +
-    '.rsum-item{border:1px solid #ccc;border-radius:6px;padding:5px 2px;text-align:center}' +
+    '.pr-row{padding:2px 0}.prn{display:inline-block;width:48%;vertical-align:top;font-size:12px}' +
+    '.rsum-grid{font-size:0;margin:6px 0 10px}' +
+    '.rsum-item{display:inline-block;font-size:13px;width:24%;box-sizing:border-box;border:1px solid #ccc;border-radius:6px;padding:5px 2px;text-align:center;vertical-align:top}' +
     '.rsum-item b{display:block;font-size:14px}.rsum-item span{font-size:10px;color:#555}' +
     '.rnote{font-size:11px;margin:5px 0}.rnote.muted{color:#888}' +
     '.rd-day{border:1px solid #ddd;border-radius:6px;margin:6px 0}.rd-head{background:#f0f0f0;padding:4px 8px;border-bottom:1px solid #ddd;font-size:12px}' +
     '.rd-head b{display:inline-block;min-width:88px}.rd-plan{font-size:11px;color:#444}' +
     '.rd-badge{border:1px solid #ccc;border-radius:10px;padding:0 6px;font-size:10px}' +
     '.rd-ex{padding:4px 8px;border-bottom:1px dotted #eee}.rd-exh b{font-size:12px}.rd-exh span{font-size:10px;color:#666}' +
-    '.rd-sets{display:flex;flex-wrap:wrap;gap:4px}.rd-set{border:1px solid #e0e0e0;background:#fafafa;font-size:10px;padding:1px 6px}' +
+    '.rd-sets{padding:2px 0}.rd-set{display:inline-block;border:1px solid #e0e0e0;background:#fafafa;font-size:10px;padding:1px 6px;margin:0 4px 4px 0}' +
     '.rd-set b{font-size:11px}.rd-compact{font-size:11px}.rd-cardio{background:#f7f7f7}.rd-cd{font-size:11px}' +
     '.rfoot{font-size:10px;color:#888;margin-top:16px}';
   return '<!doctype html><html><head><meta charset="utf-8"><title>周报</title><style>' + css + '</style></head><body>' + bodyHtml + '</body></html>';
@@ -6525,11 +6529,27 @@ function buzz() {
   }
   try { if (navigator.vibrate) navigator.vibrate([220, 90, 220]); } catch (e) {}
 }
+/* iOS 自动播放策略：AudioContext 必须在用户手势里创建/resume，否则恒为 suspended，
+   组间休息由 setTimeout 触发（非手势）时静默无声。这里在首次真实手势里
+   预创建一个常驻 context 并解锁，beep 复用它。 */
+let _audioCtx = null;
+function unlockAudio() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!_audioCtx) _audioCtx = new Ctx();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch (e) {}
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('touchend', unlockAudio, { once: true, capture: true });
+  document.addEventListener('click', unlockAudio, { once: true, capture: true });
+}
 function beep(times) {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
-    const ctx = new Ctx();
+    const ctx = _audioCtx || new Ctx();
     if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
     const n = Math.max(1, Math.min(5, times || 2));
     for (let i = 0; i < n; i++) {
@@ -6539,7 +6559,8 @@ function beep(times) {
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
       o.start(t); o.stop(t + 0.25);
     }
-    setTimeout(function () { try { ctx.close(); } catch (e) {} }, n * 340 + 200);
+    /* 不 close：保留常驻解锁的 context 供下次组间休息复用（关闭后重建会被自动播放策略拦截）。
+       oscillator 已 stop，节点会被 GC；context 本身保持 unlocked。 */
   } catch (e) {}
 }
 function restAlert() {
