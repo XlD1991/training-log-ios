@@ -471,15 +471,25 @@ select.exf{appearance:auto;padding:8px 10px}
 .streak{flex:1;text-align:center;background:#F2F6FB;border-radius:10px;padding:10px}
 .streak b{display:block;font-size:26px;color:var(--primary);line-height:1.2}
 .streak span{font-size:12px;color:var(--muted)}
-.heatmap{display:flex;gap:3px;margin-top:10px;overflow-x:auto}
+.hm-tip{font-size:11px;color:var(--muted);line-height:1.5;margin:10px 0 6px}
+.hm-cal{display:flex;gap:5px;margin-top:2px}
+.hm-days{display:flex;flex-direction:column;justify-content:space-between;flex:0 0 14px;font-size:10px;color:var(--muted);padding:16px 0 0}
+.hm-days span{height:11px;line-height:11px}
+.hm-grid{flex:1;min-width:0}
+.hm-months{position:relative;height:16px;margin-left:0}
+.hm-months span{position:absolute;top:0;font-size:10px;color:var(--muted);white-space:nowrap}
+.heatmap{display:flex;gap:3px;overflow-x:auto}
 .hm-week{display:flex;flex-direction:column;gap:3px}
-.hm{width:11px;height:11px;border-radius:3px;background:#EBEEF3}
+.hm{width:12px;height:12px;border-radius:3px;background:#EBEEF3;display:block}
+[data-act="hm-day"].hm{cursor:pointer}
 .hm0{background:#EBEEF3}
 .hm1{background:#BFD2F5}
 .hm2{background:#7FA6EE}
 .hm3{background:#3B6FE0}
-.hm-legend{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted);margin-top:6px}
+.hm-future{background:transparent!important;box-shadow:inset 0 0 0 1px #E3E7ED}
+.hm-legend{display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted);margin-top:8px}
 .hm-legend .hm{display:inline-block}
+.hm-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px}
 
 /* ===== ⑤ 身体数据 ===== */
 .stat-card svg{display:block}

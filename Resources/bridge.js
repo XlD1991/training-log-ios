@@ -35,4 +35,24 @@
   try { Object.defineProperty(window, 'sessionStorage', desc); }
   catch (e) { try { window.sessionStorage = store; } catch (e2) {} }
   window.__TL_STORE__ = store;
+
+  /* 原生能力桥：写文件并弹系统分享面板 / 复制文本 / 震动 / 生成 PDF。
+     复用同一条 prompt 通道，新增 op；原生不认识时返回空串，网页据此回退。
+     文件内容统一走 base64：k = 文件名，v = base64；二进制 ZIP 也能完整传出。 */
+  window.__TL_NATIVE__ = {
+    /* 把 base64 内容写成文件并弹分享面板；返回 true 表示原生已接管 */
+    saveFile: function (filename, b64) {
+      var r = call('saveFile', String(filename), String(b64));
+      return r === '1';
+    },
+    /* 生成 PDF：把报告 HTML 交给原生渲染成 PDF 并弹分享面板 */
+    savePDF: function (filename, html) {
+      var r = call('savePDF', String(filename), String(html));
+      return r === '1';
+    },
+    /* 复制到系统剪贴板 */
+    copyText: function (text) { return call('copyText', '', String(text)) === '1'; },
+    /* 触觉反馈（组间休息提醒） */
+    haptic: function () { call('haptic'); }
+  };
 })();

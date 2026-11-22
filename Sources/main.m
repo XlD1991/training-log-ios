@@ -111,8 +111,8 @@ static NSString *TLMimeType(NSString *path) {
     if (!body) {
         NSHTTPURLResponse *resp = [[NSHTTPURLResponse alloc] initWithURL:url
                                                              statusCode:404
-                                                        HTTPVersion:@"HTTP/1.1"
-                                                       headerFields:@{ @"Content-Type": @"text/plain; charset=utf-8" }];
+                                                            HTTPVersion:@"HTTP/1.1"
+                                                           headerFields:@{ @"Content-Type": @"text/plain; charset=utf-8" }];
         [task didReceiveResponse:resp];
         [task didReceiveData:[@"Not found" dataUsingEncoding:NSUTF8StringEncoding]];
         [task didFinish];
@@ -126,8 +126,8 @@ static NSString *TLMimeType(NSString *path) {
     };
     NSHTTPURLResponse *resp = [[NSHTTPURLResponse alloc] initWithURL:url
                                                          statusCode:200
-                                                    HTTPVersion:@"HTTP/1.1"
-                                                   headerFields:headers];
+                                                        HTTPVersion:@"HTTP/1.1"
+                                                       headerFields:headers];
     [task didReceiveResponse:resp];
     [task didReceiveData:body];
     [task didFinish];
@@ -136,13 +136,140 @@ static NSString *TLMimeType(NSString *path) {
 - (void)webView:(WKWebView *)webView stopURLSchemeTask:(id<WKURLSchemeTask>)task {}
 @end
 
+#pragma mark - File operations (write to Documents/Exports + share)
+
+@class TLPDFRenderer;   /* forward: PDF 渲染失败时借 TLFileOps 弹提示 */
+
+@interface TLFileOps : NSObject
++ (NSString *)exportsDir;
++ (BOOL)writeData:(NSData *)data filename:(NSString *)filename;
++ (BOOL)writeBase64:(NSString *)b64 filename:(NSString *)filename;
++ (void)shareFile:(NSString *)filename presenter:(UIViewController *)presenter;
++ (void)alertOn:(UIViewController *)presenter message:(NSString *)message;
+@end
+
+#pragma mark - PDF renderer (offscreen WKWebView -> PDF file -> share)
+
+/* 保留活跃实例，避免异步渲染期间被释放；完成或失败后从数组移除。 */
+static NSMutableArray<TLPDFRenderer *> *TLActivePDFRenderers;
+
+@interface TLPDFRenderer : NSObject <WKNavigationDelegate>
+@property (nonatomic, strong) WKWebView *webView;
+@property (nonatomic, copy) NSString *filename;
+@property (nonatomic, weak) UIViewController *presenter;
+- (void)render:(NSString *)html filename:(NSString *)filename presenter:(UIViewController *)presenter;
+@end
+
+@implementation TLPDFRenderer
+
+- (void)render:(NSString *)html filename:(NSString *)filename presenter:(UIViewController *)presenter {
+    if (!TLActivePDFRenderers) TLActivePDFRenderers = [NSMutableArray array];
+    [TLActivePDFRenderers addObject:self];
+    self.filename = filename;
+    self.presenter = presenter;
+
+    WKWebViewConfiguration *cfg = [[WKWebViewConfiguration alloc] init];
+    WKWebView *wv = [[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 595, 842) configuration:cfg];
+    wv.navigationDelegate = self;
+    self.webView = wv;
+    /* A4 尺寸离屏渲染；不加入视图层级，createPDF 仍可渲染已加载内容 */
+    [wv loadHTMLString:html baseURL:[NSURL URLWithString:[NSString stringWithFormat:@"%@://local/", TLScheme]]];
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (@available(iOS 14.0, *)) {
+        [webView createPDFWithConfiguration:nil completionHandler:^(NSData * _Nullable pdfData, NSError * _Nullable error) {
+            if (!error && pdfData) {
+                if ([TLFileOps writeData:pdfData filename:self.filename]) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [TLFileOps shareFile:self.filename presenter:self.presenter];
+                    });
+                } else {
+                    [TLFileOps alertOn:self.presenter message:@"PDF 写入失败，请重试"];
+                }
+            } else {
+                [TLFileOps alertOn:self.presenter message:@"PDF 生成失败，请重试"];
+            }
+            [TLActivePDFRenderers removeObject:self];
+        }];
+    } else {
+        [TLFileOps alertOn:self.presenter message:@"此系统版本不支持直接生成 PDF"];
+        [TLActivePDFRenderers removeObject:self];
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    [TLFileOps alertOn:self.presenter message:@"PDF 页面加载失败，请重试"];
+    [TLActivePDFRenderers removeObject:self];
+}
+@end
+
+#pragma mark - File operations implementation
+
+@implementation TLFileOps
+
++ (NSString *)exportsDir {
+    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *ex = [dir stringByAppendingPathComponent:@"Exports"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:ex withIntermediateDirectories:YES attributes:nil error:NULL];
+    return ex;
+}
+
+/* 只取最后一段文件名并去掉控制字符，防止路径逃逸写入沙盒外。 */
++ (NSString *)safeName:(NSString *)filename {
+    NSString *base = [[filename componentsSeparatedByString:@"/"] lastObject] ?: filename;
+    base = [[base componentsSeparatedByString:@"\\"] lastObject] ?: base;
+    NSMutableString *out = [NSMutableString string];
+    for (NSInteger i = 0; i < base.length; i++) {
+        unichar ch = [base characterAtIndex:i];
+        if (ch >= 32 && ch != 127) [out appendFormat:@"%C", ch];
+    }
+    return out.length ? out : @"export.bin";
+}
+
++ (BOOL)writeData:(NSData *)data filename:(NSString *)filename {
+    if (!data) return NO;
+    NSString *path = [[self exportsDir] stringByAppendingPathComponent:[self safeName:filename]];
+    return [data writeToFile:path atomically:YES];
+}
+
++ (BOOL)writeBase64:(NSString *)b64 filename:(NSString *)filename {
+    if (!b64.length) return NO;
+    NSData *data = [[NSData alloc] initWithBase64EncodedString:b64 options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    return [self writeData:data filename:filename];
+}
+
++ (void)shareFile:(NSString *)filename presenter:(UIViewController *)presenter {
+    NSString *path = [[self exportsDir] stringByAppendingPathComponent:[self safeName:filename]];
+    NSURL *url = [NSURL fileURLWithPath:path];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        [self alertOn:presenter message:@"文件不存在，导出可能失败"];
+        return;
+    }
+    UIActivityViewController *avc = [[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
+    if (avc.popoverPresentationController) {
+        avc.popoverPresentationController.sourceView = presenter.view;
+        avc.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(presenter.view.bounds), CGRectGetMidY(presenter.view.bounds), 1, 1);
+    }
+    [presenter presentViewController:avc animated:YES completion:nil];
+}
+
++ (void)alertOn:(UIViewController *)presenter message:(NSString *)message {
+    if (!presenter) return;
+    UIAlertController *ac = [UIAlertController alertControllerWithTitle:@"导出提示" message:message preferredStyle:UIAlertControllerStyleAlert];
+    [ac addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    dispatch_async(dispatch_get_main_queue(), ^{ [presenter presentViewController:ac animated:YES completion:nil]; });
+}
+@end
+
 #pragma mark - Root view controller
 
-@interface TLViewController : UIViewController <WKUIDelegate, WKNavigationDelegate>
+@interface TLViewController : UIViewController <WKUIDelegate, WKNavigationDelegate, UIDocumentPickerDelegate>
 @end
 
 @implementation TLViewController {
     WKWebView *_webView;
+    void (^_openPanelCompletion)(NSArray<NSURL *> *);
 }
 
 - (void)viewDidLoad {
@@ -229,18 +356,86 @@ static NSString *TLMimeType(NSString *path) {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-#pragma mark - WKUIDelegate: synchronous storage bridge
+#pragma mark - WKUIDelegate: prompt bridge (storage + native capabilities)
 
 - (void)webView:(WKWebView *)webView
 runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt
     defaultText:(NSString *)defaultText
 initiatedByFrame:(WKFrameInfo *)frame
 completionHandler:(void (^)(NSString * _Nullable))completionHandler {
-    if ([prompt isEqualToString:TLBridgeTag]) {
-        completionHandler([[TLStorage shared] handle:defaultText ?: @""]);
-    } else {
-        completionHandler(@"");
+    if (![prompt isEqualToString:TLBridgeTag]) { completionHandler(@""); return; }
+
+    NSData *raw = [defaultText dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *q = raw ? [NSJSONSerialization JSONObjectWithData:raw options:0 error:NULL] : nil;
+    if (![q isKindOfClass:[NSDictionary class]]) { completionHandler(@""); return; }
+    NSString *op = [q[@"op"] isKindOfClass:[NSString class]] ? q[@"op"] : @"";
+    NSString *k  = [q[@"k"]  isKindOfClass:[NSString class]] ? q[@"k"]  : @"";
+    NSString *v  = [q[@"v"]  isKindOfClass:[NSString class]] ? q[@"v"]  : @"";
+
+    /* 写文件 + 系统分享面板：导出 JSON / CSV / TCX / ZIP 都走这里 */
+    if ([op isEqualToString:@"saveFile"]) {
+        BOOL ok = [TLFileOps writeBase64:v filename:k];
+        if (ok) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [TLFileOps shareFile:k presenter:self];
+            });
+        } else {
+            [TLFileOps alertOn:self message:@"文件写入失败，请重试"];
+        }
+        completionHandler(ok ? @"1" : @"0");
+        return;
     }
+    /* 生成 PDF：异步渲染，受理即返回 1，完成后弹分享面板 */
+    if ([op isEqualToString:@"savePDF"]) {
+        TLPDFRenderer *renderer = [[TLPDFRenderer alloc] init];
+        [renderer render:v filename:k presenter:self];
+        completionHandler(@"1");
+        return;
+    }
+    /* 复制到系统剪贴板 */
+    if ([op isEqualToString:@"copyText"]) {
+        [UIPasteboard generalPasteboard].string = v;
+        completionHandler(v.length ? @"1" : @"0");
+        return;
+    }
+    /* 组间休息触觉反馈 */
+    if ([op isEqualToString:@"haptic"]) {
+        if (@available(iOS 10.0, *)) {
+            UIImpactFeedbackGenerator *g = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+            [g impactOccurred];
+        }
+        completionHandler(@"1");
+        return;
+    }
+    /* 其余存储 op 交给 TLStorage */
+    completionHandler([[TLStorage shared] handle:defaultText ?: @""] ?: @"");
+}
+
+#pragma mark - WKUIDelegate: file picker for <input type="file"> (import backup)
+
+- (void)webView:(WKWebView *)webView
+runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
+    initiatedByFrame:(WKFrameInfo *)frame
+   completionHandler:(void (^)(NSArray<NSURL *> * _Nullable URLs))completionHandler {
+    _openPanelCompletion = completionHandler;
+    /* 用字符串 UTI，避免引入 UniformTypeIdentifiers framework；允许所有文档，
+       因为用户可能选 JSON 备份，也可能选其他文本文件。 */
+    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
+        initWithDocumentTypes:@[@"public.json", @"public.text", @"public.data"]
+                       inMode:UIDocumentPickerModeOpen];
+    picker.delegate = self;
+    picker.modalPresentationStyle = UIModalPresentationFormSheet;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (_openPanelCompletion) _openPanelCompletion(urls);
+    _openPanelCompletion = nil;
+}
+
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    if (_openPanelCompletion) _openPanelCompletion(nil);
+    _openPanelCompletion = nil;
 }
 
 #pragma mark - WKNavigationDelegate

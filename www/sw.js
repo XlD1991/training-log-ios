@@ -4,7 +4,7 @@
    ② install 逐项容错，任一资源 403 不会让整个 SW 安装失败（否则新版本永远装不上）；
    ③ 非 2xx 响应绝不写缓存——站点鉴权失败会返回「链接不完整」的 HTML，
       过去被当成 JS 缓存下来，导致云服务一直加载不了且刷新无效。 */
-const CACHE = 'trainlog-v40';
+const CACHE = 'trainlog-v42';
 const ASSETS = ['./', './index.html', './foods.js', './app.js', './style.css', './icon.svg', './manifest.webmanifest'];
 
 /* v34：会话失效兜底修复。

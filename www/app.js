@@ -1975,27 +1975,77 @@ function currentStreak() {
   while (set[todayStr(d)]) { streak++; d.setDate(d.getDate() - 1); }
   return streak;
 }
+/* 热力图每格明细：力量组数 + 有氧次数/分钟。只用于展示，不参与任何统计口径。 */
+function trainingDayDetail() {
+  const m = {};
+  state.records.forEach(r => {
+    if (!r || !validRecordDate(r.date)) return;
+    const x = m[r.date] || (m[r.date] = { sets: 0, cardio: 0, min: 0 });
+    x.sets++;
+  });
+  Object.keys(state.cardio || {}).forEach(k => {
+    const r = state.cardio[k];
+    if (r && validRecordDate(r.date) && r.done) {
+      const x = m[r.date] || (m[r.date] = { sets: 0, cardio: 0, min: 0 });
+      x.cardio++;
+      x.min += Number(r.minutes) || 0;
+    }
+  });
+  return m;
+}
+function hmDayText(ds, count, det) {
+  const wd = '日一二三四五六'[new Date(ds + 'T00:00:00').getDay()];
+  const head = dateLabel(ds) + ' 周' + wd;
+  if (!count || !det) return head + ' · 未训练';
+  const bits = [];
+  if (det.sets) bits.push('力量 ' + det.sets + ' 组');
+  if (det.cardio) bits.push('有氧 ' + det.cardio + ' 次' + (det.min ? '（' + det.min + ' 分钟）' : ''));
+  return head + ' · ' + count + ' 条记录' + (bits.length ? '：' + bits.join('，') : '');
+}
+function hmDayTip(ds) {
+  return hmDayText(ds, trainingDatesSet()[ds] || 0, trainingDayDetail()[ds]);
+}
 function consistencyHTML() {
   const set = trainingDatesSet();
+  const detail = trainingDayDetail();
   const streak = currentStreak();
   const total = Object.keys(set).length;
-  // 最近 70 天网格（10 周 × 7 天），按周分列
+  /* 10 个自然周（周一为每行首格），每列 7 天：顶部标月份、左侧标星期，
+     点格子看当天明细。未来的格子置灰，避免被误读成「漏练」。 */
   const today = new Date();
-  const start = new Date(today); start.setDate(start.getDate() - 69);
-  const cells = [];
-  for (let i = 0; i < 70; i++) {
-    const d = new Date(start); d.setDate(start.getDate() + i);
-    const ds = todayStr(d); const c = set[ds] || 0;
-    const lvl = c === 0 ? 0 : c <= 2 ? 1 : c <= 5 ? 2 : 3;
-    cells.push('<i class="hm hm' + lvl + '" title="' + ds + '：' + (c || '未训练') + '"></i>');
+  const endMon = mondayOf(today);
+  const startMon = new Date(endMon); startMon.setDate(startMon.getDate() - 63);
+  const todayS = todayStr(today);
+  const cells = [], months = [];
+  let prevMonth = -1;
+  for (let w = 0; w < 10; w++) {
+    const col = [];
+    const colStart = new Date(startMon); colStart.setDate(startMon.getDate() + w * 7);
+    const m = colStart.getMonth();
+    if (w === 0 || m !== prevMonth) months.push('<span style="left:' + (w * 15) + 'px">' + (m + 1) + '月</span>');
+    prevMonth = m;
+    for (let r = 0; r < 7; r++) {
+      const d = new Date(colStart); d.setDate(colStart.getDate() + r);
+      const ds = todayStr(d);
+      const future = ds > todayS;
+      const c = future ? 0 : (set[ds] || 0);
+      const lvl = c === 0 ? 0 : c <= 2 ? 1 : c <= 5 ? 2 : 3;
+      const tip = future ? dateLabel(ds) + ' · 还没到这天' : hmDayText(ds, c, detail[ds]);
+      col.push('<i class="hm hm' + lvl + (future ? ' hm-future' : '') + '"' +
+        (future ? '' : ' data-act="hm-day" data-date="' + ds + '"') +
+        ' title="' + esc(tip) + '"></i>');
+    }
+    cells.push('<div class="hm-week">' + col.join('') + '</div>');
   }
-  const weeks = [];
-  for (let w = 0; w < 10; w++) weeks.push('<div class="hm-week">' + cells.slice(w * 7, w * 7 + 7).join('') + '</div>');
+  const dow = ['一', '二', '三', '四', '五', '六', '日'].map(x => '<span>' + x + '</span>').join('');
   return '<div class="section-title">坚持打卡</div>' +
     '<div class="stat-card"><div class="streak-row"><div class="streak"><b>' + streak + '</b><span>连续训练（天）</span></div>' +
     '<div class="streak"><b>' + total + '</b><span>累计训练日</span></div></div>' +
-    '<div class="heatmap">' + weeks.join('') + '</div>' +
-    '<div class="hm-legend">少 <i class="hm hm0"></i><i class="hm hm1"></i><i class="hm hm2"></i><i class="hm hm3"></i> 多</div></div>';
+    '<div class="hm-tip">近 10 个自然周 · 每格 1 天（左列为周一、顶格为周一）；点格子看当天明细</div>' +
+    '<div class="hm-cal"><div class="hm-days">' + dow + '</div><div class="hm-grid">' +
+    '<div class="hm-months">' + months.join('') + '</div><div class="heatmap">' + cells.join('') + '</div></div></div>' +
+    '<div class="hm-legend">记录少 <i class="hm hm0"></i><i class="hm hm1"></i><i class="hm hm2"></i><i class="hm hm3"></i> 记录多</div>' +
+    '<div class="hm-hint">颜色深浅 = 当天记录条数（力量组数 + 有氧次数），不表示重量或强度</div></div>';
 }
 
 /* ================= ⑤ 身体数据追踪 ================= */
@@ -3548,25 +3598,54 @@ function weeklyReportHTML(anchorStr, opts) {
     (o.stats ? statsHTML() : '') +
     '<div class="rfoot">由「无限进步」本地生成 · ' + esc(ui.today) + ' · 数据仅保存在本机，未上传云端</div></div>';
 }
-function exportPDF(anchorStr, opts) {
+/* 打印区域 → 独立 HTML（内联打印样式），供原生渲染成 PDF。
+   原生不可用时回退到浏览器打印对话框。 */
+function printReportHTML(bodyHtml) {
+  const css = 'body{margin:0;padding:16px;color:#000;font:13px/1.6 -apple-system,"PingFang SC",sans-serif}' +
+    'h1{font-size:22px;margin:0 0 4px}.rsub{color:#555;margin-bottom:12px}' +
+    '.section-title{font-size:15px;font-weight:700;margin:16px 0 6px}' +
+    '.stat-card{border:1px solid #ccc;padding:8px 10px;margin-bottom:10px}' +
+    '.stat-h{font-weight:700;margin-bottom:6px}.bar-row{display:flex;align-items:center;gap:8px;padding:2px 0}' +
+    '.bl{width:44px;color:#555}.btrack{flex:1;height:10px;background:#ddd;border-radius:4px;overflow:hidden}' +
+    '.btrack i{display:block;height:100%;background:#3B6FE0}.btrack i.k{background:#1F9D55}' +
+    '.pr-line{padding:6px 0;border-bottom:1px solid #eee;line-height:1.5}.pr-line b{display:inline-block;min-width:92px}' +
+    '.pr-row{display:flex;gap:8px;padding:2px 0}.prn{flex:1}' +
+    '.rsum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 10px}' +
+    '.rsum-item{border:1px solid #ccc;border-radius:6px;padding:5px 2px;text-align:center}' +
+    '.rsum-item b{display:block;font-size:14px}.rsum-item span{font-size:10px;color:#555}' +
+    '.rnote{font-size:11px;margin:5px 0}.rnote.muted{color:#888}' +
+    '.rd-day{border:1px solid #ddd;border-radius:6px;margin:6px 0}.rd-head{background:#f0f0f0;padding:4px 8px;border-bottom:1px solid #ddd;font-size:12px}' +
+    '.rd-head b{display:inline-block;min-width:88px}.rd-plan{font-size:11px;color:#444}' +
+    '.rd-badge{border:1px solid #ccc;border-radius:10px;padding:0 6px;font-size:10px}' +
+    '.rd-ex{padding:4px 8px;border-bottom:1px dotted #eee}.rd-exh b{font-size:12px}.rd-exh span{font-size:10px;color:#666}' +
+    '.rd-sets{display:flex;flex-wrap:wrap;gap:4px}.rd-set{border:1px solid #e0e0e0;background:#fafafa;font-size:10px;padding:1px 6px}' +
+    '.rd-set b{font-size:11px}.rd-compact{font-size:11px}.rd-cardio{background:#f7f7f7}.rd-cd{font-size:11px}' +
+    '.rfoot{font-size:10px;color:#888;margin-top:16px}';
+  return '<!doctype html><html><head><meta charset="utf-8"><title>周报</title><style>' + css + '</style></head><body>' + bodyHtml + '</body></html>';
+}
+function emitPDF(bodyHtml, filename) {
+  if (window.__TL_NATIVE__ && window.__TL_NATIVE__.savePDF) {
+    try {
+      if (window.__TL_NATIVE__.savePDF(filename, printReportHTML(bodyHtml))) return true;
+      toast('PDF 生成失败，请重试'); return false;
+    } catch (e) {}
+  }
+  /* 桌面回退：浏览器打印对话框 */
   const area = document.getElementById('printArea');
-  if (!area) { toast('当前环境不支持导出'); return; }
-  area.innerHTML = weeklyReportHTML(anchorStr || ui.reportAnchor || ui.today, opts);
-  area.classList.remove('hidden');
+  if (!area) { toast('当前环境不支持导出'); return false; }
+  area.innerHTML = bodyHtml; area.classList.remove('hidden');
   window.print();
   setTimeout(function () { area.classList.add('hidden'); }, 800);
+  return true;
+}
+function exportPDF(anchorStr, opts) {
+  return emitPDF(weeklyReportHTML(anchorStr || ui.reportAnchor || ui.today, opts), '周报_' + (anchorStr || ui.reportAnchor || ui.today) + '.pdf');
 }
 /* v32：任意区间导出。区间非法给出提示，不调起打印。 */
 function exportRangePDF(startStr, endStr, opts) {
   const html = reportHTML(startStr, endStr, opts);
   if (!html) { toast('日期无效或超过 ' + REPORT_MAX_DAYS + ' 天，请重新选择'); return false; }
-  const area = document.getElementById('printArea');
-  if (!area) { toast('当前环境不支持导出'); return false; }
-  area.innerHTML = html;
-  area.classList.remove('hidden');
-  window.print();
-  setTimeout(function () { area.classList.add('hidden'); }, 800);
-  return true;
+  return emitPDF(html, '周报_' + startStr + '_' + endStr + '.pdf');
 }
 /* ---------- 周报弹层：选周 + 实时预览 + 打印 ---------- */
 function reportWeekStarts() {
@@ -5093,8 +5172,9 @@ function exportCardioCSV() {
       r.powerAvg || '', r.cadence || '', r.hrAvg, r.hrMax, z[0], z[1],
       pz ? pz[0] : '', pz ? pz[1] : '', r.rpe, r.done ? '☑' : '☐', (r.note || '') + legacy]);
   });
-  download(toCSV(rows), 'text/csv;charset=utf-8', '有氧记录_' + ui.today + '.csv');
-  toast('有氧表格已导出');
+  const ok = download(toCSV(rows), 'text/csv;charset=utf-8', '有氧记录_' + ui.today + '.csv');
+  if (ok) toast('有氧表格已保存');
+  return ok;
 }
 
 /* ---------- 器械库页 ---------- */
@@ -6091,23 +6171,46 @@ function deleteCustomGear(id) {
 
 /* ---------- 导出 / 计时 / 记录 ---------- */
 
+/* 内容 → base64：字符串先按 UTF-8 编码；Uint8Array（ZIP）直接逐字节转。
+   分块避免大备份撑爆 String.fromCharCode 的参数个数上限。 */
+function toBase64(content) {
+  const bytes = (content instanceof Uint8Array) ? content
+    : new TextEncoder().encode(typeof content === 'string' ? content : String(content));
+  let bin = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(bin);
+}
+/* 导出统一入口：iOS 原生壳能落盘并弹分享面板就走原生，否则回退浏览器 Blob 下载。
+   返回 true 仅当文件确实被保存（原生写入成功，或桌面浏览器触发了下载）。 */
 function download(content, type, filename) {
-  const blob = new Blob([content], { type: type });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  if (window.__TL_NATIVE__ && window.__TL_NATIVE__.saveFile) {
+    try {
+      if (window.__TL_NATIVE__.saveFile(filename, toBase64(content))) return true;
+      toast('导出失败：无法写入文件，请重试');
+      return false;
+    } catch (e) { /* 落到浏览器回退 */ }
+  }
+  try {
+    const blob = new Blob([content], { type: type });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    return true;
+  } catch (e) { toast('导出失败：' + (e && e.message)); return false; }
 }
 function toCSV(rows) {
   return '\uFEFF' + rows.map(row => row.map(v => '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
 }
 function exportJSON() {
-  download(JSON.stringify({ version: 7, exportedAt: new Date().toISOString(), ...state }, null, 2),
+  const ok = download(JSON.stringify({ version: 7, exportedAt: new Date().toISOString(), ...state }, null, 2),
     'application/json;charset=utf-8', '无限进步_' + ui.today + '.json');
-  toast('备份已导出');
+  if (ok) toast('备份已保存，请在弹出的面板中选「存储到文件」');
+  return ok;
 }
 function exportCSV() {
   const rows = [['日期', '训练日', '动作', '组序', '重量(kg)', '次数', '目标RIR', '实际RIR', '容量(kg·次)', '备注']];
@@ -6116,14 +6219,16 @@ function exportCSV() {
     const rir = (r.rir !== undefined && r.rir !== null && r.rir !== '') ? (Number(r.rir) >= 5 ? '力竭' : r.rir) : '';
     rows.push([r.date, dayName(r.day), r.exName, r.setIndex, r.weight, r.reps, r.rirTarget || '', rir, vol, (state.notes && state.notes[r.exKey]) || '']);
   });
-  download(toCSV(rows), 'text/csv;charset=utf-8', '无限进步_' + ui.today + '.csv');
-  toast('表格已导出');
+  const ok = download(toCSV(rows), 'text/csv;charset=utf-8', '无限进步_' + ui.today + '.csv');
+  if (ok) toast('训练表格已保存');
+  return ok;
 }
 function exportGearCSV() {
   const rows = [['编号', '器械区', '器械', '可用动作', '动作模式', '目标肌群', '类型', '建议组间(秒)', '计划状态', '来源', '备注']];
   allGear().forEach(g => rows.push([g.id, g.cat, g.gear, g.name, g.pattern, g.muscle, g.kind, g.rest, g.status, g.custom ? '自定义' : '内置', g.note || '']));
-  download(toCSV(rows), 'text/csv;charset=utf-8', '健身房器械库_' + ui.today + '.csv');
-  toast('器械库已导出');
+  const ok = download(toCSV(rows), 'text/csv;charset=utf-8', '健身房器械库_' + ui.today + '.csv');
+  if (ok) toast('器械库已保存');
+  return ok;
 }
 
 /* ================= 佳明 Connect（中国版）· TCX 导出 =================
@@ -6346,6 +6451,15 @@ function fallbackCopyGarminNotes(text, date) {
 function copyGarminNotes(date) {
   const text = garminNotesText(date);
   if (!text) { toast('这一天还没有可复制的训练明细'); return; }
+  /* iOS 原生壳：自定义 scheme 下 navigator.clipboard 不可用，走原生剪贴板 */
+  if (window.__TL_NATIVE__ && window.__TL_NATIVE__.copyText) {
+    try {
+      if (window.__TL_NATIVE__.copyText(text)) {
+        toast('已复制 ' + date + ' 的训练明细，到佳明活动注释里粘贴');
+        return;
+      }
+    } catch (e) {}
+  }
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(
@@ -6359,27 +6473,29 @@ function copyGarminNotes(date) {
 }
 function exportGarminOne(date) {
   const b = garminBuild(date);
-  if (!b) { toast('这一天还没有可导出的记录'); return; }
+  if (!b) { toast('这一天还没有可导出的记录'); return false; }
   /* 纯英文文件名，避开佳明上传链路对非 ASCII 文件名的兼容性问题 */
-  download(b.xml, 'application/vnd.garmin.tcx+xml;charset=utf-8', 'training-log_' + date + '.tcx');
-  toast('已导出 ' + date + ' 的 .tcx' + (b.shifted ? '（开始时间已自动前移）' : '') +
+  const ok = download(b.xml, 'application/vnd.garmin.tcx+xml;charset=utf-8', 'training-log_' + date + '.tcx');
+  if (ok) toast('已保存 ' + date + ' 的 .tcx' + (b.shifted ? '（开始时间已自动前移）' : '') +
     '；导入后请把活动类型改为「力量训练」，再点「复制明细」粘到注释');
+  return ok;
 }
 function exportGarminAll() {
   const dates = garminDates();
-  if (!dates.length) { toast('还没有训练记录可导出'); return; }
+  if (!dates.length) { toast('还没有训练记录可导出'); return false; }
   const built = dates.map(d => ({ date: d, b: garminBuild(d) })).filter(x => x.b);
-  if (!built.length) { toast('还没有训练记录可导出'); return; }
+  if (!built.length) { toast('还没有训练记录可导出'); return false; }
   /* 每天两个文件：.tcx 上传用，_notes.txt 粘贴到佳明注释用 */
   const files = [];
   built.forEach(x => {
     files.push({ name: 'training-log_' + x.date + '.tcx', content: x.b.xml });
     files.push({ name: 'training-log_' + x.date + '_notes.txt', content: x.b.text.replace(/\n/g, '\r\n') });
   });
-  download(zipStore(files), 'application/zip', 'training-log_garmin_' + ui.today + '.zip');
+  const ok = download(zipStore(files), 'application/zip', 'training-log_garmin_' + ui.today + '.zip');
   const nShift = built.filter(x => x.b.shifted).length;
-  toast('已打包 ' + built.length + ' 天（每天 .tcx + _notes.txt），解压后逐个导入' +
+  if (ok) toast('已保存 ' + built.length + ' 天的打包文件（每天 .tcx + _notes.txt），解压后逐个导入' +
     (nShift ? '（' + nShift + ' 天的开始时间已自动前移）' : ''));
+  return ok;
 }
 
 function renderTimer() {
@@ -6402,7 +6518,13 @@ function renderTimer() {
 }
 /* 组间休息结束的主动提醒：震动 + 响铃（设置可关）。
    计时基于结束时间戳，切到后台再回来时 renderTimer 会重新判定并触发提醒。 */
-function buzz() { try { if (navigator.vibrate) navigator.vibrate([220, 90, 220]); } catch (e) {} }
+function buzz() {
+  /* iOS 无 Vibration API：走原生触觉反馈（web 端回退到 vibrate） */
+  if (window.__TL_NATIVE__ && window.__TL_NATIVE__.haptic) {
+    try { window.__TL_NATIVE__.haptic(); return; } catch (e) {}
+  }
+  try { if (navigator.vibrate) navigator.vibrate([220, 90, 220]); } catch (e) {}
+}
 function beep(times) {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -6530,6 +6652,11 @@ document.addEventListener('click', function (e) {
   }
   if (act === 'review-today') {
     ui.reviewDate = ''; ui.tab = 'today'; window.scrollTo(0, 0); render(); return;
+  }
+  if (act === 'hm-day') {
+    const ds = el.dataset.date;
+    if (validRecordDate(ds)) toast(hmDayTip(ds));
+    return;
   }
   /* v22：完成态随时可看总结，不再依赖「开始/结束训练计时」 */
   if (act === 'open-summary') { openSessionSummary(); return; }
@@ -6740,12 +6867,13 @@ document.addEventListener('click', function (e) {
   else if (act === 'cardio-remove') removeCardioSlot(el.dataset.slot);
   else if (act === 'cardio-timer-start') startCardioTimer(el.dataset.slot);
   else if (act === 'cardio-timer-stop') stopCardioTimer(el.dataset.slot);
-  else if (act === 'export-json') { exportJSON(); markBackup(); }
-  else if (act === 'export-csv') { exportCSV(); markBackup(); }
-  else if (act === 'export-cardio') { exportCardioCSV(); markBackup(); }
-  else if (act === 'export-gear') { exportGearCSV(); markBackup(); }
+  /* 只有文件确实保存成功才记「已备份」——否则界面会假报数据安全，比不备份更危险 */
+  else if (act === 'export-json') { if (exportJSON()) markBackup(); }
+  else if (act === 'export-csv') { if (exportCSV()) markBackup(); }
+  else if (act === 'export-cardio') { if (exportCardioCSV()) markBackup(); }
+  else if (act === 'export-gear') { if (exportGearCSV()) markBackup(); }
   else if (act === 'goto-backup') { ui.tab = 'backup'; window.scrollTo(0, 0); render(); }
-  else if (act === 'export-pdf') exportPDF(ui.today, { detail: true, stats: true }); // 兼容旧入口
+  else if (act === 'export-pdf') { if (exportPDF(ui.today, { detail: true, stats: true })) toast('周报 PDF 已保存'); } // 兼容旧入口
   /* ---- 周报 / 导出 PDF（T4） ---- */
   else if (act === 'report-open') openReportModal();
   else if (act === 'report-prev') shiftReportAnchor(-1);
@@ -6763,14 +6891,10 @@ document.addEventListener('click', function (e) {
     saveUI(); renderReportModal();
   }
   else if (act === 'report-print') {
-    if (ui.reportMode === 'range') {
-      const r = activeReportRange();
-      exportRangePDF(r.start, r.end, ui.reportOpt);
-      toast('已调起打印，选择「另存为 PDF」即可');
-    } else {
-      exportPDF(ui.reportAnchor || ui.today, ui.reportOpt);
-      toast('已调起打印，选择「另存为 PDF」即可');
-    }
+    const ok = ui.reportMode === 'range'
+      ? exportRangePDF(activeReportRange().start, activeReportRange().end, ui.reportOpt)
+      : exportPDF(ui.reportAnchor || ui.today, ui.reportOpt);
+    if (ok) toast(window.__TL_NATIVE__ ? '周报 PDF 已保存，请在面板中选「存储到文件」' : '请在打印对话框选「另存为 PDF」');
   }
   else if (act === 'start-session') { if (!state.sessions[ui.today]) state.sessions[ui.today] = { start: Date.now() }; save(); render(); }
   else if (act === 'end-session') {

@@ -273,6 +273,21 @@
     ok(has('训练历史'), '历史页标题');
     ok(has('塔式推胸') || has('坐姿卷腹'), '历史页列出今天练过的动作');
     ok(!!q('#app [data-act="report-open"]'), '历史页有周报入口');
+    /* 打卡热力图：刻度、星期、月份、明细点击 */
+    ok(!!q('#app .hm-cal'), '热力图有日历容器');
+    eq(qa('#app .hm-days span').length, 7, '热力图左侧 7 个星期标签');
+    ok(qa('#app .hm-months span').length >= 1, '热力图顶部有月份刻度');
+    eq(qa('#app .hm-week').length, 10, '热力图 10 个周列');
+    eq(qa('#app .hm-week .hm').length, 70, '热力图 70 个日格');
+    ok(has('每格 1 天'), '热力图有读图说明');
+    ok(has('颜色深浅 = 当天记录条数'), '图例讲清颜色含义');
+    var todayCell = q('#app [data-act="hm-day"][data-date="2026-11-20"]');
+    ok(!!todayCell, '今天格子可点击');
+    if (todayCell) {
+      ok((todayCell.getAttribute('title') || '').indexOf('力量') >= 0, '今天格子 title 含力量组数明细');
+      click(todayCell);
+      ok((q('#toast').textContent || '').indexOf('力量') >= 0, '点格子弹出当天明细');
+    }
     junk('历史');
 
     /* 回看入口在「完成态」的今日页 */
@@ -950,6 +965,57 @@
         ok(has('已导入'), '导入成功有提示');
       } catch (e) {
         FAIL++; FAILS.push('【24 导入】确认导入抛错：' + e.message);
+      }
+
+      /* ============ 25 原生文件桥（模拟 iOS 壳 __TL_NATIVE__） ============ */
+      try {
+        var saved = [], copies = [], pdfs = [], haptics = 0;
+        window.__TL_NATIVE__ = {
+          saveFile: function (name, b64) { saved.push({ name: name, b64: b64 }); return true; },
+          savePDF: function (name, html) { pdfs.push({ name: name, html: html }); return true; },
+          copyText: function (t) { copies.push(t); return true; },
+          haptic: function () { haptics++; }
+        };
+        /* 25.1 内容转 base64 正确（含中文 UTF-8） */
+        var b64cn = toBase64('力量记录');
+        var raw = atob(b64cn), bytes = new Uint8Array(raw.length);
+        for (var bi = 0; bi < raw.length; bi++) bytes[bi] = raw.charCodeAt(bi);
+        eq(new TextDecoder().decode(bytes), '力量记录', 'toBase64 中文按 UTF-8 编码可还原');
+        /* 25.2 导出 JSON 走原生桥：文件落地、提示为真实保存、不误报 */
+        var s0 = saved.length;
+        var okJson = exportJSON();
+        eq(okJson, true, '原生桥下导出 JSON 返回成功');
+        eq(saved.length, s0 + 1, '导出确实写入原生文件系统');
+        ok(/\.json$/.test(saved[s0].name), '原生收到 .json 文件名');
+        ok(saved[s0].b64.length > 0, '原生收到非空 base64 内容');
+        ok(has('存储到文件'), '提示改为让用户「存储到文件」而非假提示');
+        /* 25.3 二进制 ZIP 也走桥、base64 非空 */
+        var s1 = saved.length;
+        var okZip = download(new Uint8Array([0, 1, 2, 255]), 'application/zip', 't.zip');
+        eq(okZip, true, '二进制内容导出返回成功');
+        eq(saved.length, s1 + 1, '二进制也写入原生');
+        eq(atob(saved[s1].b64).length, 4, 'Uint8Array 按字节转 base64 无丢失');
+        /* 25.4 原生写入失败 → 返回 false，不记录备份时间 */
+        window.__TL_NATIVE__.saveFile = function () { return false; };
+        var oldBackup = state.lastBackup;
+        var clickFail = q('[data-act="export-json"]');
+        if (clickFail) click(clickFail);
+        eq(state.lastBackup, oldBackup, '写入失败时不更新备份时间（消除假备份）');
+        /* 25.5 PDF 走原生渲染桥 */
+        var okPdf = exportPDF(ui.today, { detail: true, stats: true });
+        eq(okPdf, true, 'PDF 走原生桥返回成功');
+        ok(pdfs.length >= 1 && /\.pdf$/.test(pdfs[pdfs.length - 1].name), '原生收到 .pdf 渲染请求');
+        ok(pdfs.length && pdfs[pdfs.length - 1].html.indexOf('<!doctype html>') === 0, 'PDF 内容是完整 HTML');
+        /* 25.6 原生剪贴板与触觉桥可用（复制入口依赖当天有明细，这里直测桥） */
+        eq(window.__TL_NATIVE__.copyText('测试明细'), true, '原生剪贴板桥返回成功');
+        eq(copies.length, 1, '文本已送到原生剪贴板');
+        ok(typeof copyGarminNotes === 'function', '复制明细入口存在');
+        buzz();
+        ok(haptics >= 1, '组间休息提醒走原生触觉');
+        /* 清理 mock，避免影响后续 */
+        delete window.__TL_NATIVE__;
+      } catch (e) {
+        FAIL++; FAILS.push('【25 原生文件桥】抛错：' + (e && e.message));
       }
       finish();
     }, 600);
